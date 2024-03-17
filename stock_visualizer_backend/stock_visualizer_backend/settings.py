@@ -25,14 +25,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-j+_i(2vgt4iuhv8tuig6qarqvkg%2-*_@80*#to*uy_he=_4-^'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    'ec2-34-228-153-230.compute-1.amazonaws.com'
+]
 
-
+# should change this when in production because it is not secure
 CORS_ALLOW_ALL_ORIGINS = True
 
 # CORS_ALLOWED_ORIGINS = [
@@ -96,11 +99,11 @@ WSGI_APPLICATION = 'stock_visualizer_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'financial',
-        'USER': 'briedle',
-        'PASSWORD': env('DATABASE_PASSWORD'),
-        'HOST': 'localhost',  # Or your PostgreSQL server address
-        'PORT': '5432',
+        'NAME': env('DB_NAME'),
+        'USER': env('DB_USER'),
+        'PASSWORD': env('DB_PASSWORD'),
+        'HOST': env('DB_HOST'),  # Or your PostgreSQL server address
+        'PORT': env('DB_PORT'),
     }
 }
 
