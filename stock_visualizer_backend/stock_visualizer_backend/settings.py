@@ -32,7 +32,8 @@ DEBUG = env.bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = [
     'localhost',
-    'ec2-34-228-153-230.compute-1.amazonaws.com'
+    'ec2-34-228-153-230.compute-1.amazonaws.com',
+    '127.0.0.1',
 ]
 
 # should change this when in production because it is not secure
