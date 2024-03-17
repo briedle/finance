@@ -4,6 +4,16 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+requests = "*"
+ipykernel = "*"
+pandas = "*"
+numpy = "*"
+matplotlib = "*"
+pyjsonviewer = "*"
+flatten-json = "*"
+nbconvert = "*"
+django = "*"
+django-cors-headers = "*"
 
 [dev-packages]
 
