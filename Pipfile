@@ -14,6 +14,7 @@ flatten-json = "*"
 nbconvert = "*"
 django = "*"
 django-cors-headers = "*"
+django-environ = "*"
 
 [dev-packages]
 
