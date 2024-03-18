@@ -17,7 +17,7 @@ function StockSelector({ onSelect }) {
   const [symbols, setSymbols] = useState([]);
 
   useEffect(() => {
-    fetch('http://127.0.0.1:8000/symbols/')
+    fetch(`${process.env.REACT_APP_API_URL}/symbols/`)
       .then(response => response.json())
       .then(data => setSymbols(data));
   }, []);
@@ -36,7 +36,7 @@ function TimeSeries({ symbol }) {
 
   useEffect(() => {
     if (symbol) {
-      fetch(`http://127.0.0.1:8000/time_series/${symbol}/`)
+      fetch(`${process.env.REACT_APP_API_URL}/time_series/${symbol}/`)
         .then(response => response.json())
         .then(data => setTimeSeries(data));
     }
