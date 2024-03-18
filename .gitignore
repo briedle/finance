@@ -3,6 +3,7 @@ __pycache__
 .Pipfile.lock
 stock_visualizer_frontend/node_modules/
 data/
+static_files/
 node_modules/
 
 
