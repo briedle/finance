@@ -18,6 +18,7 @@ django-environ = "*"
 psycopg2-binary = "*"
 django-storages = {extras = ["boto3"], version = "*"}
 gunicorn = "*"
+sqlalchemy = "*"
 
 [dev-packages]
 
