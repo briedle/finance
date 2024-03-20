@@ -2,6 +2,8 @@ __pycache__
 .Python
 .Pipfile.lock
 stock_visualizer_frontend/node_modules/
+stock_visualizer_frontend/.env*
+.ipynb_checkpoints/
 data/
 static_files/
 node_modules/
