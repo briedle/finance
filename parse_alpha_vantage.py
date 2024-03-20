@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import os
 import copy
+import sqlalchemy
 
 TOP_COMPANIES = [
     "AAPL",   # Apple Inc.
@@ -55,6 +56,32 @@ TOP_COMPANIES = [
     "ABB",    # ABB Ltd.
     "DOW"     # Dow Inc.
 ]
+
+# This probably belongs somewhere else, but putting it here for now.
+def create_db_engine(
+    db_name: str, 
+    db_user: str = 'briedle', 
+    db_password: str = 'ben21788', 
+    db_host: str = 'localhost', 
+    db_port: str = '5432',
+):
+    """
+    Creates a database engine for connecting to a PostgreSQL database.
+
+    Args:
+        db_name (str): The name of the database.
+        db_user (str): The username for the database.
+        db_password (str): The password for the database.
+        db_host (str): The host for the database.
+        db_port (str): The port for the database.
+
+    Returns:
+        sqlalchemy.engine.base.Engine: A database engine object.
+    """
+    engine = sqlalchemy.create_engine(
+        f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    )
+    return engine
 
 
 def fetch_data(

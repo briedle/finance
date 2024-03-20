@@ -2,8 +2,37 @@ from django.db import models
 
 # Create your models here.
 
-class StockData(models.Model):
-    symbol = models.CharField(max_length=20)
+class BaseStockData(models.Model):
+    SECTOR_CHOICES = [
+        ('Industrials', 'Industrials'),
+        ('Financials', 'Financials'),
+        ('Information Technology', 'Information Technology'),
+        ('Health Care', 'Health Care'),
+        ('Consumer Discretionary', 'Consumer Discretionary'),
+        ('Consumer Staples', 'Consumer Staples'),
+        ('Real Estate', 'Real Estate'),
+        ('Utilities', 'Utilities'),
+        ('Materials', 'Materials'),
+        ('Energy', 'Energy'),
+        ('Communication Services', 'Communication Services'),
+    ]
+    symbol = models.CharField(max_length=20, primary_key=True)
+    name = models.CharField(max_length=255, unique=True)
+    sector = models.CharField(max_length=25, choices=SECTOR_CHOICES)
+    headquarters = models.CharField(max_length=255)
+    date_added = models.DateField()
+
+    def __str__(self):
+        return f"{self.symbol} - {self.name}"
+
+
+class MonthlyStockPriceData(models.Model):
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='monthly_price_data',
+        null=True,
+        )
     date = models.DateField()
     open = models.DecimalField(max_digits=10, decimal_places=2)
     high = models.DecimalField(max_digits=10, decimal_places=2)
@@ -11,15 +40,26 @@ class StockData(models.Model):
     close = models.DecimalField(max_digits=10, decimal_places=2)
     adj_close = models.DecimalField(max_digits=10, decimal_places=2)
     volume = models.BigIntegerField()
-    dividend = models.DecimalField(max_digits=10, decimal_places=2)
+    dividend = models.DecimalField(max_digits=10, decimal_places=2)  
+    class Meta:
+        unique_together = ('stock', 'date')
 
     def __str__(self):
         return f"{self.symbol} - {self.date}"
 
 
 class IncomeStatementData(models.Model):
-    symbol = models.CharField(max_length=20)
-    report_type = models.CharField(max_length=10)
+    REPORT_TYPE_CHOICES = [
+        ('annual', 'Annual'),
+        ('quarterly', 'Quarterly'),
+    ]
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='income_statement_data',
+        null=True,
+        )
+    report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
     date = models.DateField()
 
     # Set null=True and blank=True for fields that can accept NULL values
@@ -44,6 +84,9 @@ class IncomeStatementData(models.Model):
     ebit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     ebitda = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     net_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        unique_together = ('stock', 'report_type', 'date')
 
     def __str__(self):
         return f"{self.symbol} - {self.date} - {self.report_type}"

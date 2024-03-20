@@ -1,10 +1,10 @@
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import StockData  # Assuming you have a model for storing stock data
+from .models import BaseStockData  # Assuming you have a model for storing stock data
 
 def get_symbols(request):
     symbols = (
-        StockData
+        BaseStockData
         .objects
         .values_list('symbol', flat=True)
         .distinct()
@@ -13,7 +13,7 @@ def get_symbols(request):
 
 def get_time_series(request, symbol):
     stock_data = (
-        StockData
+        BaseStockData
         .objects
         .filter(symbol=symbol)
         .values(
