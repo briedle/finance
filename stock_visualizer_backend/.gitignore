@@ -5,3 +5,6 @@ __pycache__
 data/
 static_files/
 stock_visualizer_backend/.env
+stock_visualizer_backend/__pycache__
+stocks/__pycache__
+
