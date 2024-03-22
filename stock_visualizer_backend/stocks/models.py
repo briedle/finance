@@ -1,5 +1,4 @@
 # models.py
-
 from django.db import models
 
 # Create your models here.
@@ -47,7 +46,7 @@ class MonthlyStockPriceData(models.Model):
         unique_together = ('stock', 'date')
 
     def __str__(self):
-        return f"{self.symbol} - {self.date}"
+        return f"{self.stock.symbol} - {self.date}"
 
 
 class IncomeStatementData(models.Model):

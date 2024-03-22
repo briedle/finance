@@ -7,4 +7,6 @@ static_files/
 stock_visualizer_backend/.env
 stock_visualizer_backend/__pycache__
 stocks/__pycache__
-
+.env
+*.egg-info/
+stocks/experimental/__pycache__

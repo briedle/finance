@@ -13,16 +13,17 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from pathlib import Path
 import environ
 
+# Initialize environment variables
 env = environ.Env()
-# Reading .env file
-environ.Env.read_env()
-
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Assuming your script is in stock_visualizer_backend/experimental
+# and your .env file is in stock_visualizer_backend/
 BASE_DIR = Path(__file__).resolve().parent.parent
+env_file = str(BASE_DIR / '.env')
+env.read_env(env_file)
 
 STATIC_ROOT = '/home/ubuntu/web-projects/finance/static_files'
 
+RAPIDAPI_KEY = env('RAPIDAPI_KEY')
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')
@@ -42,12 +43,15 @@ SECRET_KEY = env('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = [
-    'localhost',
-    'ec2-34-228-153-230.compute-1.amazonaws.com',
-    '127.0.0.1',
-    '34.228.153.230',
-]
+# ALLOWED_HOSTS = [
+#     'localhost',
+#     'ec2-34-228-153-230.compute-1.amazonaws.com',
+#     '127.0.0.1',
+#     '34.228.153.230',
+# ]
+
+ALLOWED_HOSTS = ['*']
+
 
 # should change this when in production because it is not secure
 CORS_ALLOW_ALL_ORIGINS = True
@@ -101,6 +105,26 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'stock_visualizer_backend.wsgi.application'
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {  # This is the root logger, which will capture all log messages unless specified otherwise
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+
+
 
 
 # Database
