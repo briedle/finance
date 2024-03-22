@@ -1,64 +1,11 @@
 import requests
 import pandas as pd
 import time
-import os
 import copy
-import sqlalchemy
 import decimal
 import datetime
 from stocks.models import BaseStockData, MonthlyStockPriceData
-
-TOP_COMPANIES = [
-    "AAPL",   # Apple Inc.
-    "MSFT",   # Microsoft Corporation
-    "AMZN",   # Amazon.com Inc.
-    "GOOGL",  # Alphabet Inc. (Google)
-    "META",   # Meta Platforms, Inc. (Facebook)
-    "TSLA",   # Tesla, Inc.
-    "BRK.A",  # Berkshire Hathaway Inc.
-    "BRK.B",  # Berkshire Hathaway Inc.
-    "NVDA",   # NVIDIA Corporation
-    "JPM",    # JPMorgan Chase & Co.
-    "JNJ",    # Johnson & Johnson
-    "V",      # Visa Inc.
-    "PG",     # Procter & Gamble Company
-    "UNH",    # UnitedHealth Group Incorporated
-    "MA",     # Mastercard Incorporated
-    "PYPL",   # PayPal Holdings, Inc.
-    "DIS",    # The Walt Disney Company
-    "BABA",   # Alibaba Group Holding Limited
-    "HD",     # The Home Depot, Inc.
-    "CMCSA",  # Comcast Corporation
-    "BAC",    # Bank of America Corporation
-    "INTC",   # Intel Corporation
-    "T",      # AT&T Inc.
-    "KO",     # The Coca-Cola Company
-    "WMT",    # Walmart Inc.
-    "NFLX",   # Netflix, Inc.
-    "PFE",    # Pfizer Inc.
-    "ADBE",   # Adobe Inc.
-    "CRM",    # salesforce.com, inc.
-    "NKE",    # NIKE, Inc.
-    "XOM",    # Exxon Mobil Corporation
-    "MRK",    # Merck & Co., Inc.
-    "CSCO",   # Cisco Systems, Inc.
-    "ABT",    # Abbott Laboratories
-    "TMO",    # Thermo Fisher Scientific Inc.
-    "VZ",     # Verizon Communications Inc.
-    "PEP",    # PepsiCo, Inc.
-    "ORCL",   # Oracle Corporation
-    "NVS",    # Novartis AG
-    "ABBV",   # AbbVie Inc.
-    "DHR",    # Danaher Corporation
-    "BMY",    # Bristol Myers Squibb Co.
-    "PM",     # Philip Morris International Inc.
-    "LLY",    # Eli Lilly and Company
-    "AVGO",   # Broadcom Inc.
-    "GE",     # General Electric Company
-    "CVX",    # Chevron Corporation
-    "ABB",    # ABB Ltd.
-    "DOW"     # Dow Inc.
-]
+from django.conf import settings
 
 
 def fetch_data(
@@ -93,13 +40,12 @@ def fetch_data(
     }
     
     if not api_key:
-        api_key = os.getenv('RAPIDAPI_KEY')
+        api_key = settings.RAPIDAPI_KEY
         if not api_key:
             raise ValueError('API key not provided')
     
     headers = {
         "X-RapidAPI-Key": api_key,
-        # "X-RapidAPI-Key": "1c63ffa51amsh98ddb79fb2729e8p14b4fajsn657b83e58886",
         "X-RapidAPI-Host": "alpha-vantage.p.rapidapi.com"
     }
     
