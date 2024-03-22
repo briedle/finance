@@ -17,6 +17,7 @@ django-extensions = "*"
 django-cors-headers = "*"
 django-storages = "*"
 asgiref = "*"
+pysupport = {file = "../pysupport", editable = true}
 
 [dev-packages]
 

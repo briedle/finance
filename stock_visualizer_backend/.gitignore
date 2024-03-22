@@ -1,0 +1,7 @@
+__pycache__
+.Python
+.Pipfile.lock
+.ipynb_checkpoints/
+data/
+static_files/
+stock_visualizer_backend/.env
