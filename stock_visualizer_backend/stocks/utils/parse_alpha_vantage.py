@@ -1,14 +1,112 @@
 import requests
 import time
-import decimal
-import os
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, QuarterlyStockOverview
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List
-from decimal import Decimal, InvalidOperation
 import re
+from decimal import Decimal, InvalidOperation
+import decimal
+
+def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
+    """
+    Safely converts a string to a Decimal. If the conversion fails or the value is 'None',
+    it returns a specified default value.
+
+    Args:
+        value (str): The string value to convert to Decimal.
+        default (Optional[Decimal]): The default value to return in case of conversion failure.
+
+    Returns:
+        Optional[Decimal]: The converted Decimal value or the default value if conversion fails.
+    """
+    if value in (None, 'None', ''):
+        return default
+    try:
+        return Decimal(value.strip())
+    except (InvalidOperation, TypeError, ValueError):
+        logging.error(f"Invalid decimal value: {value}")
+        return default
+
+
+def safe_int(value: str, default: Optional[int] = None) -> Optional[int]:
+    """
+    Safely converts a string to an integer. If the conversion fails or the value is 'None',
+    it returns a specified default value.
+
+    Args:
+        value (str): The string value to convert to an integer.
+        default (Optional[int]): The default value to return in case of conversion failure.
+
+    Returns:
+        Optional[int]: The converted integer value or the default value if conversion fails.
+    """
+    if value in (None, 'None', ''):
+        return default
+    try:
+        return int(value.strip())
+    except (ValueError, TypeError):
+        logging.error(f"Invalid integer value: {value}")
+        return default
+
+
+def safe_date(value: str, default: Optional[datetime.date] = None) -> Optional[datetime.date]:
+    """
+    Safely converts a string to a date object. If the conversion fails or the value is 'None',
+    it returns a specified default value.
+
+    Args:
+        value (str): The string value to convert to a datetime.date.
+        default (Optional[datetime.date]): The default value to return in case of conversion failure.
+
+    Returns:
+        Optional[datetime.date]: The converted date object or the default value if conversion fails.
+    """
+    if value in (None, 'None', ''):
+        return default
+    try:
+        return datetime.datetime.strptime(value.strip(), '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        logging.error(f"Invalid date value: {value}")
+        return default
+
+
+def camel_to_snake(name: Union[str, List[str]]) -> Union[str, List[str]]:
+    """
+    Converts a string or a list of strings from camel case to snake case.
+    
+    This function handles consecutive capital letters and numbers, ensuring that
+    sequences like 'HTTPError' or 'CamelW2WCase' are correctly converted to
+    'http_error' and 'camel_w2w_case', respectively. It supports both single strings
+    and lists of strings.
+
+    Args:
+        name (Union[str, List[str]]): A string or a list of strings in camel case to be converted.
+
+    Returns:
+        Union[str, List[str]]: The converted string or list of strings in snake case.
+
+    Examples:
+        camel_to_snake("CamelCase") returns "camel_case"
+        camel_to_snake("CamelCamelCase") returns "camel_camel_case"
+        camel_to_snake("CamelW2WCase") returns "camel_w2w_case"
+        camel_to_snake(["CamelCase", "AnotherExample"]) returns ["camel_case", "another_example"]
+        camel_to_snake("accumulatedDepreciationAmortizationPPE")
+    """
+    def convert(item: str) -> str:
+        # Insert underscores before uppercase letters followed by lowercase letters
+        item = re.sub(r'(?<!^)(?=(?:[A-Z][a-z]|(?<=[a-z0-9])[A-Z]|\d+[a-z]))', '_', item)
+        # Handle special case for consecutive uppercase letters
+        item = re.sub(r'(?<=[a-z])([A-Z]+)(?=[A-Z][a-z])', r'_\1', item)
+        return item.lower()
+
+    if isinstance(name, str):
+        return convert(name)
+    elif isinstance(name, list):
+        return [convert(item) for item in name]
+    else:
+        raise TypeError("Input must be a string or a list of strings")
 
 
 def fetch_data(
@@ -244,64 +342,84 @@ def sync_balance_sheet(data: Dict) -> None:
             )
 
 
-       
- 
-def safe_decimal(value: str, default: Decimal = None) -> Optional[Decimal]:
+def sync_base_and_quarterly_overview(data: Dict) -> None:
     """
-    Safely converts a string to a Decimal. Returns a default value (None by default) if the
-    conversion fails.
+    Parses the company data from Alpha Vantage and updates or creates corresponding 
+    Django model instances for BaseStockData and QuarterlyStockOverview.
 
     Args:
-        value (str): The string value to convert to Decimal.
-        default (Decimal): The default value to return in case of conversion failure.
-
-    Returns:
-        Optional[Decimal]: The converted Decimal value or the default value if conversion fails.
+        data (Dict): The company data from Alpha Vantage, including symbol, company information,
+        and quarterly reports.
     """
-    try:
-        # Trim whitespace and check if the value is not just whitespace or empty
-        if value and value.strip():
-            return Decimal(value.strip())
-        return default
-    except (InvalidOperation, TypeError, ValueError):
-        return default
-
-
-def camel_to_snake(name: Union[str, List[str]]) -> Union[str, List[str]]:
-    """
-    Converts a string or a list of strings from camel case to snake case.
+    # Extract and update base stock data
+    stock_symbol = data['symbol']
+    base_stock_defaults = {
+        'name': data.get('Name'),
+        'description': data.get('Description'),
+        'headquarters': data.get('Address'),
+        'cik': data.get('CIK'),
+        'exchange': data.get('Exchange'),
+        'country': data.get('Country'),
+        'currency': data.get('Currency'),
+        'sector': data.get('Sector'),
+        'industry': data.get('Industry'),
+        'fiscal_year_end': data.get('FiscalYearEnd'),
+    }
     
-    This function handles consecutive capital letters and numbers, ensuring that
-    sequences like 'HTTPError' or 'CamelW2WCase' are correctly converted to
-    'http_error' and 'camel_w2w_case', respectively. It supports both single strings
-    and lists of strings.
+    base_stock, _ = BaseStockData.objects.update_or_create(
+        symbol=stock_symbol, defaults=base_stock_defaults
+    )
 
-    Args:
-        name (Union[str, List[str]]): A string or a list of strings in camel case to be converted.
+    quarter_end_date = datetime.datetime.strptime(data['LatestQuarter'], '%Y-%m-%d').date()
+    overview_defaults = {
+        'market_capitalization': safe_decimal(data.get('MarketCapitalization')),
+        'ebitda': safe_decimal(data.get('EBITDA')),
+        'pe_ratio': safe_decimal(data.get('PERatio')),
+        'peg_ratio': safe_decimal(data.get('PEGRatio')),
+        'book_value': safe_decimal(data.get('BookValue')),
+        'dividend_per_share': safe_decimal(data.get('DividendPerShare')),
+        'dividend_yield': safe_decimal(data.get('DividendYield')),
+        'eps': safe_decimal(data.get('EPS')),
+        'revenue_per_share_ttm': safe_decimal(data.get('RevenuePerShareTTM')),
+        'profit_margin': safe_decimal(data.get('ProfitMargin')),
+        'operating_margin_ttm': safe_decimal(data.get('OperatingMarginTTM')),
+        'return_on_assets_ttm': safe_decimal(data.get('ReturnOnAssetsTTM')),
+        'return_on_equity_ttm': safe_decimal(data.get('ReturnOnEquityTTM')),
+        'revenue_ttm': safe_decimal(data.get('RevenueTTM')),
+        'gross_profit_ttm': safe_decimal(data.get('GrossProfitTTM')),
+        'diluted_eps_ttm': safe_decimal(data.get('DilutedEPSTTM')),
+        'quarterly_earnings_growth_yoy': safe_decimal(data.get('QuarterlyEarningsGrowthYOY')),
+        'quarterly_revenue_growth_yoy': safe_decimal(data.get('QuarterlyRevenueGrowthYOY')),
+        'analyst_target_price': safe_decimal(data.get('AnalystTargetPrice')),
+        'analyst_rating_strong_buy': safe_int(data.get('AnalystRatingStrongBuy')),
+        'analyst_rating_buy': safe_int(data.get('AnalystRatingBuy')),
+        'analyst_rating_hold': safe_int(data.get('AnalystRatingHold')),
+        'analyst_rating_sell': safe_int(data.get('AnalystRatingSell')),
+        'analyst_rating_strong_sell': safe_int(data.get('AnalystRatingStrongSell')),
+        'trailing_pe': safe_decimal(data.get('TrailingPE')),
+        'forward_pe': safe_decimal(data.get('ForwardPE')),
+        'price_to_sales_ratio_ttm': safe_decimal(data.get('PriceToSalesRatioTTM')),
+        'price_to_book_ratio': safe_decimal(data.get('PriceToBookRatio')),
+        'ev_to_revenue': safe_decimal(data.get('EVToRevenue')),
+        'ev_to_ebitda': safe_decimal(data.get('EVToEBITDA')),
+        'beta': safe_decimal(data.get('Beta')),
+        'week_high_52': safe_decimal(data.get('52WeekHigh')),
+        'week_low_52': safe_decimal(data.get('52WeekLow')),
+        'day_moving_average_50': safe_decimal(data.get('50DayMovingAverage')),
+        'day_moving_average_200': safe_decimal(data.get('200DayMovingAverage')),
+        'shares_outstanding': safe_decimal(data.get('SharesOutstanding')),
+        'dividend_date': safe_date(data.get('DividendDate')),
+        'ex_dividend_date': safe_date(data.get('ExDividendDate')),
+    }
 
-    Returns:
-        Union[str, List[str]]: The converted string or list of strings in snake case.
+    # Using get_or_create to avoid creating duplicates
+    QuarterlyStockOverview.objects.update_or_create(
+        stock=base_stock,
+        quarter_end_date=quarter_end_date,
+        defaults=overview_defaults
+    )
 
-    Examples:
-        camel_to_snake("CamelCase") returns "camel_case"
-        camel_to_snake("CamelCamelCase") returns "camel_camel_case"
-        camel_to_snake("CamelW2WCase") returns "camel_w2w_case"
-        camel_to_snake(["CamelCase", "AnotherExample"]) returns ["camel_case", "another_example"]
-        camel_to_snake("accumulatedDepreciationAmortizationPPE")
-    """
-    def convert(item: str) -> str:
-        # Insert underscores before uppercase letters followed by lowercase letters
-        item = re.sub(r'(?<!^)(?=(?:[A-Z][a-z]|(?<=[a-z0-9])[A-Z]|\d+[a-z]))', '_', item)
-        # Handle special case for consecutive uppercase letters
-        item = re.sub(r'(?<=[a-z])([A-Z]+)(?=[A-Z][a-z])', r'_\1', item)
-        return item.lower()
 
-    if isinstance(name, str):
-        return convert(name)
-    elif isinstance(name, list):
-        return [convert(item) for item in name]
-    else:
-        raise TypeError("Input must be a string or a list of strings")
 
 
 # def pull_and_parse(
