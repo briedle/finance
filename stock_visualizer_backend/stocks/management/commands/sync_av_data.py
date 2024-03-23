@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from stocks.utils import parse_alpha_vantage as pav
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData
 from django.conf import settings
 import logging
 
@@ -11,12 +11,14 @@ class Command(BaseCommand):
     function_to_syncing = {
         'TIME_SERIES_MONTHLY_ADJUSTED': pav.sync_monthly_adjusted,
         'INCOME_STATEMENT': pav.sync_income_statement,
+        'BALANCE_SHEET': pav.sync_balance_sheet,
         # Add other mappings as needed
     }
 
     function_to_model = {
         'TIME_SERIES_MONTHLY_ADJUSTED': MonthlyStockPriceData,
         'INCOME_STATEMENT': IncomeStatementData,
+        'BALANCE_SHEET': BalanceSheetData,  # Use the same model for now
         # Add other mappings as needed
     }
 

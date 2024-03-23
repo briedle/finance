@@ -167,6 +167,11 @@ def sync_income_statement(data: Dict) -> None:
                 date=date,
                 defaults=defaults
             )
+            
+# TODO: WE STILL NEED TO IMPLEMENT THE sync_balance_sheet function!!
+def sync_balance_sheet(data: Dict) -> None:
+    pass
+
        
  
 def safe_decimal(value: str, default: Decimal = None) -> Optional[Decimal]:
