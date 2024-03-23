@@ -1,12 +1,14 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, QuarterlyStockOverview
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List
 import re
+import csv
 from decimal import Decimal, InvalidOperation
+from django.db import transaction
 
 
 def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
@@ -111,8 +113,8 @@ def camel_to_snake(name: Union[str, List[str]]) -> Union[str, List[str]]:
 
 
 def fetch_data(
-    stock_symbol: str, 
     function: str, 
+    stock_symbol: None | str = None, 
     api_key: str = None,
     backoff_seconds: int = 60,
     max_retries: int = 5, 
@@ -123,8 +125,9 @@ def fetch_data(
     Implements exponential backoff in case of rate limiting.
 
     Parameters:
-    - stock_symbol (str): The stock symbol to fetch data for.
     - function (str): The function to use for fetching data.
+    - stock_symbol (optional - str): The stock symbol to fetch data for. For most functions, 
+        this is required, but there are a few (e.g. LISTING_STATUS) where this is not a parameter.
     - api_key (str): The API key for Alpha Vantage.
     - max_retries (int): Maximum number of retries before giving up.
     - **kwargs: Additional parameters to pass to the API.
@@ -136,7 +139,10 @@ def fetch_data(
     - ValueError: If the API request fails after the maximum number of retries.
     """
     url = "https://alpha-vantage.p.rapidapi.com/query"
-    querystring = {"symbol": stock_symbol, "function": function, "datatype": "json", **kwargs}
+    if stock_symbol:
+        querystring = {"symbol": stock_symbol, "function": function, "datatype": "json", **kwargs}
+    else:
+        querystring = {"function": function, "datatype": "json", **kwargs}
     
     if not api_key:
         api_key = settings.RAPIDAPI_KEY
@@ -147,7 +153,6 @@ def fetch_data(
     headers = {"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "alpha-vantage.p.rapidapi.com"}
 
     retry_count = 0
-    backoff_seconds = 30  # Start with 1 second
 
     while retry_count < max_retries:
         try:
@@ -169,6 +174,64 @@ def fetch_data(
 
     raise ValueError("Max retries exceeded. Failed to fetch data.")
 
+
+def fetch_csv_data(
+    function: str, 
+    api_key: None | str = None, 
+    backoff_seconds: int = 60, 
+    max_retries: int = 5,
+    **kwargs
+) -> List[List[str]]:
+    """
+    Fetches CSV data from the Alpha Vantage API for a given function.
+    Implements exponential backoff in case of rate limiting.
+
+    Parameters:
+    - function (str): The function to use for fetching data. Should be a function that 
+        returns CSV data.
+    - api_key (str, optional): The API key to use for fetching data. Defaults to None, in which
+        case the API key from the settings file is used.
+    - backoff_seconds (int): Initial backoff time in seconds in case of rate limiting.
+    - max_retries (int): Maximum number of retries before giving up.
+    - **kwargs: Additional parameters to pass to the API.
+
+    Returns:
+    - List[List[str]]: A list of rows from the CSV file, where each row is a list of strings.
+
+    Raises:
+    - ValueError: If the API request fails after the maximum number of retries.
+    """
+    
+    if not api_key:
+        api_key = settings.RAPIDAPI_KEY  # Or another way to fetch the API key
+        if not api_key:
+            raise ValueError('API key not provided')
+
+    url = "https://www.alphavantage.co/query"
+    params = {"function": function, "apikey": api_key, **kwargs}
+    
+    retry_count = 0
+    while retry_count < max_retries:
+        try:
+            response = requests.get(url, params=params)
+            if response.status_code == 200:
+                decoded_content = response.content.decode('utf-8')
+                cr = csv.reader(decoded_content.splitlines(), delimiter=',')
+                return list(cr)
+            elif response.status_code == 429:  # Rate limit exceeded
+                print(f"Rate limit exceeded. Retrying in {backoff_seconds} seconds...")
+                time.sleep(backoff_seconds)
+                backoff_seconds *= 2  # Double the backoff time for the next retry
+                retry_count += 1
+            else:
+                raise ValueError(f"Error fetching data: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
+            time.sleep(backoff_seconds)
+            backoff_seconds *= 2
+            retry_count += 1
+
+    raise ValueError("Max retries exceeded. Failed to fetch data.")
 
 def sync_monthly_adjusted(data: dict):
     """
@@ -421,6 +484,58 @@ def sync_cash_flow(data: Dict) -> None:
             )
 
 
+def sync_earnings(data: Dict) -> None:
+    """
+    Parses the earnings data from Alpha Vantage and updates or creates corresponding 
+    Django model instances for EarningsData.
+
+    This function processes both annual and quarterly earnings, updating the database with new
+    or updated records for each entry. It logs errors and skips entries without necessary data.
+
+    Args:
+        data (Dict): The earnings data from Alpha Vantage, including symbol, annual
+        earnings, and quarterly earnings.
+    """
+    stock_symbol = data['symbol']
+
+    try:
+        base_stock = BaseStockData.objects.get(symbol=stock_symbol)
+    except BaseStockData.DoesNotExist:
+        logging.error(f"No BaseStockData found for stock symbol: {stock_symbol}. Will not use this data.")
+        return
+
+    # Process annual earnings
+    for annual_earning in data.get('annualEarnings', []):
+        date = datetime.datetime.strptime(annual_earning['fiscalDateEnding'], '%Y-%m-%d').date()
+        defaults = {
+            'reported_eps': safe_decimal(annual_earning.get('reportedEPS')),
+        }
+
+        EarningsData.objects.update_or_create(
+            stock=base_stock,
+            report_type='annual',
+            date=date,
+            defaults=defaults
+        )
+
+    # Process quarterly earnings
+    for quarterly_earning in data.get('quarterlyEarnings', []):
+        date = datetime.datetime.strptime(quarterly_earning['fiscalDateEnding'], '%Y-%m-%d').date()
+        defaults = {
+            'reported_eps': safe_decimal(quarterly_earning.get('reportedEPS')),
+            'estimated_eps': safe_decimal(quarterly_earning.get('estimatedEPS')),
+            'surprise': safe_decimal(quarterly_earning.get('surprise')),
+            'surprise_percentage': safe_decimal(quarterly_earning.get('surprisePercentage')),
+        }
+
+        EarningsData.objects.update_or_create(
+            stock=base_stock,
+            report_type='quarterly',
+            date=date,
+            defaults=defaults
+        )
+
+
 
 
 def sync_base_and_quarterly_overview(data: Dict) -> None:
@@ -496,7 +611,6 @@ def sync_base_and_quarterly_overview(data: Dict) -> None:
         'dividend_date': safe_date(data.get('DividendDate')),
         'ex_dividend_date': safe_date(data.get('ExDividendDate')),
     }
-    
     overview_defaults = {key: value for key, value in overview_defaults.items() if value is not None}
 
     # Using get_or_create to avoid creating duplicates
@@ -505,6 +619,61 @@ def sync_base_and_quarterly_overview(data: Dict) -> None:
         quarter_end_date=quarter_end_date,
         defaults=overview_defaults
     )
+    
+    
+def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
+    """
+    Syncs the earnings calendar data from the Alpha Vantage API.
+    
+    This function is quite different from the other syncing functions in that:
+      1.  It does not use a stock_symbol -- it returns a giant amount of data 
+      2.  It returns a csv, not json
+      3.  We are not going to run this through the sync_av_data command line tool.  We are just 
+          going to execute this from the Django shell.
+      4.  We 
+
+    Args:
+        api_key (str): The API key for Alpha Vantage.
+        horizon (str): The horizon parameter for the API call, e.g., "3month".
+    """
+    CSV_URL = f'https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon={horizon}&apikey={api_key}'
+    current_date = datetime.date.today()
+
+    with requests.Session() as s:
+        download = s.get(CSV_URL)
+        decoded_content = download.content.decode('utf-8')
+
+        cr = csv.reader(decoded_content.splitlines(), delimiter=',')
+        next(cr)  # Skip header row
+
+        with transaction.atomic():
+            for row in cr:
+                symbol, name, report_date, fiscal_date_ending, estimate, currency = row
+
+                # Skip rows where the estimate is missing
+                if not estimate:
+                    continue
+
+                # Create or update BaseStockData only if estimate is present
+                stock, _ = BaseStockData.objects.get_or_create(
+                    symbol=symbol,
+                    defaults={'name': name, 'currency': currency}
+                )
+
+                # Create or update EarningsCalendarData
+                horizon_months = int(horizon.replace('month', ''))
+                estimate_decimal = safe_decimal(estimate)
+                EarningsCalendarData.objects.update_or_create(
+                    stock=stock,
+                    current_date=current_date,
+                    report_date=datetime.datetime.strptime(report_date, '%Y-%m-%d').date(),
+                    defaults={
+                        'horizon_months': horizon_months,
+                        'fiscal_date_ending': datetime.datetime.strptime(fiscal_date_ending, '%Y-%m-%d').date(),
+                        'estimate': estimate_decimal,
+                    }
+                )
+
 
 
 # def fetch_data(

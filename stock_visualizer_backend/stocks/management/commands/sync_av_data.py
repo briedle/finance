@@ -6,7 +6,7 @@ import logging
 
 from django.core.management.base import BaseCommand
 from stocks.utils import parse_alpha_vantage as pav
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, QuarterlyStockOverview
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, EarningsData, QuarterlyStockOverview
 from django.conf import settings
 import logging
 
@@ -19,6 +19,7 @@ class Command(BaseCommand):
         'BALANCE_SHEET': pav.sync_balance_sheet,
         'OVERVIEW': pav.sync_base_and_quarterly_overview,  
         'CASH_FLOW': pav.sync_cash_flow,
+        'EARNINGS': pav.sync_earnings,
     }
 
     # For this special case, we'll handle the existence check differently
@@ -27,6 +28,7 @@ class Command(BaseCommand):
         'INCOME_STATEMENT': IncomeStatementData,
         'BALANCE_SHEET': BalanceSheetData,
         'CASH_FLOW': CashFlowData,
+        'EARNINGS': EarningsData,
         # Not adding 'OVERVIEW' here
     }
 

@@ -21,21 +21,8 @@ class StockIntegerField(models.BigIntegerField):
 
 
 class BaseStockData(models.Model):
-    # SECTOR_CHOICES = [
-    #     ('Industrials', 'Industrials'),
-    #     ('Financials', 'Financials'),
-    #     ('Information Technology', 'Information Technology'),
-    #     ('Health Care', 'Health Care'),
-    #     ('Consumer Discretionary', 'Consumer Discretionary'),
-    #     ('Consumer Staples', 'Consumer Staples'),
-    #     ('Real Estate', 'Real Estate'),
-    #     ('Utilities', 'Utilities'),
-    #     ('Materials', 'Materials'),
-    #     ('Energy', 'Energy'),
-    #     ('Communication Services', 'Communication Services'),
-    # ]
     symbol = models.CharField(max_length=20, primary_key=True)
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
     headquarters = models.CharField(max_length=255)
     cik = models.CharField(max_length=20, null=True, blank=True)
@@ -45,7 +32,8 @@ class BaseStockData(models.Model):
     sector = models.CharField(max_length=100, null=True, blank=True)
     industry = models.CharField(max_length=255, null=True, blank=True)
     fiscal_year_end = models.CharField(max_length=20, null=True, blank=True)
-    date_added = models.DateField(null=True, blank=True)
+    is_sp500 = models.BooleanField(default=False)
+    date_added_to_sp500 = models.DateField(null=True, blank=True)
     
     def __str__(self):
         return f"{self.symbol} - {self.name}"
@@ -232,7 +220,6 @@ class BalanceSheetData(models.Model, metaclass=FinancialDataMeta):
         'common_stock',
         'common_stock_shares_outstanding',
     ]
-
     class Meta:
         unique_together = ('stock', 'report_type', 'date')
 
@@ -280,15 +267,61 @@ class CashFlowData(models.Model, metaclass=FinancialDataMeta):
         'change_in_exchange_rate',
         'net_income',
     ]
-
     class Meta:
         unique_together = ('stock', 'report_type', 'date')
 
     def __str__(self):
         return f"{self.stock.symbol} - {self.report_type} - {self.date}"
 
+class EarningsData(models.Model, metaclass=FinancialDataMeta):
+    REPORT_TYPE_CHOICES = [
+        ('annual', 'Annual'),
+        ('quarterly', 'Quarterly'),
+    ]
+
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='earnings_data',
+        null=True,
+    )
+    report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
+    date = models.DateField()
+    reported_date = models.DateField(null=True, blank=True)  # Only for quarterly data
+    reported_eps = StockIntegerField()
+    estimated_eps = StockIntegerField(null=True, blank=True)  # Only for quarterly data
+    surprise = StockIntegerField(null=True, blank=True)  # Only for quarterly data
+    surprise_percentage = StockIntegerField(null=True, blank=True)  # Only for quarterly data
+
+    financial_fields = [
+        'reported_eps',
+        'estimated_eps',
+        'surprise',
+        'surprise_percentage',
+    ]
+
+    class Meta:
+        unique_together = ('stock', 'report_type', 'date', 'reported_date')
 
 
+class EarningsCalendarData(models.Model):
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='earnings_calendar_data',
+        null=True,
+    )
+    current_date = models.DateField()
+    horizon_months = models.IntegerField()
+    report_date = models.DateField()
+    fiscal_date_ending = models.DateField()
+    estimate = models.DecimalField(max_digits=10, decimal_places=3)
+
+    def __str__(self):
+        return f"{self.name} ({self.symbol}) - {self.report_date}"
+    
+    class Meta:
+        unique_together = ('stock', 'current_date', 'report_date')
 
 
 
