@@ -1,13 +1,13 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, QuarterlyStockOverview
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, QuarterlyStockOverview
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List
 import re
 from decimal import Decimal, InvalidOperation
-import decimal
+
 
 def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
     """
@@ -109,36 +109,34 @@ def camel_to_snake(name: Union[str, List[str]]) -> Union[str, List[str]]:
         raise TypeError("Input must be a string or a list of strings")
 
 
+
 def fetch_data(
     stock_symbol: str, 
     function: str, 
-    api_key: None | str = None,
+    api_key: str = None,
+    backoff_seconds: int = 60,
+    max_retries: int = 5, 
     **kwargs
 ):
     """
     Fetches data from the Alpha Vantage API for a given stock symbol and function.
-    Will automatically retry if the request fails due to rate limiting.
-    
+    Implements exponential backoff in case of rate limiting.
+
     Parameters:
     - stock_symbol (str): The stock symbol to fetch data for.
     - function (str): The function to use for fetching data.
+    - api_key (str): The API key for Alpha Vantage.
+    - max_retries (int): Maximum number of retries before giving up.
     - **kwargs: Additional parameters to pass to the API.
-    
+
     Returns:
     - dict: The JSON response from the API.
-    
+
     Raises:
-        - ValueError: If the API request fails due to an invalid API key or
-          unexpected response.
+    - ValueError: If the API request fails after the maximum number of retries.
     """
     url = "https://alpha-vantage.p.rapidapi.com/query"
-    
-    querystring = {
-        "symbol": stock_symbol,
-        "function": function,
-        "datatype": "json",
-        **kwargs
-    }
+    querystring = {"symbol": stock_symbol, "function": function, "datatype": "json", **kwargs}
     
     if not api_key:
         api_key = settings.RAPIDAPI_KEY
@@ -146,25 +144,32 @@ def fetch_data(
         if not api_key:
             raise ValueError('API key not provided')
     
-    headers = {
-        "X-RapidAPI-Key": api_key,
-        "X-RapidAPI-Host": "alpha-vantage.p.rapidapi.com"
-    }
-    
-    response = requests.get(url, headers=headers, params=querystring)
-    
-    if response.status_code == 200:
-        return response.json()
-    elif response.status_code == 429:
-        print('Rate limit exceeded.  Waiting 60 seconds and trying again.')
-        time.sleep(60)
-        return fetch_data(stock_symbol, function, api_key, **kwargs)
-    else:
-        error_message = f'Error fetching data: {response.status_code}'
-        print(error_message)
-        raise ValueError(error_message)
+    headers = {"X-RapidAPI-Key": api_key, "X-RapidAPI-Host": "alpha-vantage.p.rapidapi.com"}
 
-    
+    retry_count = 0
+    backoff_seconds = 30  # Start with 1 second
+
+    while retry_count < max_retries:
+        try:
+            response = requests.get(url, headers=headers, params=querystring)
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 429:  # Rate limit exceeded
+                print(f"Rate limit exceeded. Retrying in {backoff_seconds} seconds...")
+                time.sleep(backoff_seconds)
+                backoff_seconds *= 2  # Double the backoff time for the next retry
+                retry_count += 1
+            else:
+                raise ValueError(f"Error fetching data: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"Request failed: {e}")
+            time.sleep(backoff_seconds)
+            backoff_seconds *= 2
+            retry_count += 1
+
+    raise ValueError("Max retries exceeded. Failed to fetch data.")
+
+
 def sync_monthly_adjusted(data: dict):
     """
     Parse the given Alpha Vantage's TIME_SERIES_MONTHLY_ADJUSTED data and create Django model 
@@ -180,21 +185,24 @@ def sync_monthly_adjusted(data: dict):
     base_stock, _ = BaseStockData.objects.get_or_create(symbol=stock_symbol)
     
     for date_str, values in data['Monthly Adjusted Time Series'].items():
-        date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        date = safe_date(date_str)
+        
+        defaults = {
+            'open': safe_decimal(values['1. open']),
+            'high': safe_decimal(values['2. high']),
+            'low': safe_decimal(values['3. low']),
+            'close': safe_decimal(values['4. close']),
+            'adj_close': safe_decimal(values['5. adjusted close']),
+            'volume': safe_int(values['6. volume']),
+            'dividend': safe_decimal(values['7. dividend amount']),
+        }
+        
+        defaults = {key: value for key, value in defaults.items() if value is not None}
     
-    for date, values in data['Monthly Adjusted Time Series'].items():
         MonthlyStockPriceData.objects.update_or_create(
             stock=base_stock,
             date=date,
-            defaults={
-                'open': decimal.Decimal(values['1. open']),
-                'high': decimal.Decimal(values['2. high']),
-                'low': decimal.Decimal(values['3. low']),
-                'close': decimal.Decimal(values['4. close']),
-                'adj_close': decimal.Decimal(values['5. adjusted close']),
-                'volume': int(values['6. volume']),
-                'dividend': decimal.Decimal(values['7. dividend amount']),
-            }
+            defaults=defaults
         )
 
 # INCOME STATEMENT 
@@ -258,6 +266,8 @@ def sync_income_statement(data: Dict) -> None:
                 'ebitda': safe_decimal(entry['ebitda']),
                 'net_income': safe_decimal(entry['netIncome']),
             }
+            
+            defaults = {key: value for key, value in defaults.items() if value is not None}
             
             IncomeStatementData.objects.update_or_create(
                 stock=base_stock,
@@ -334,6 +344,8 @@ def sync_balance_sheet(data: Dict) -> None:
                 'common_stock_shares_outstanding': safe_decimal(entry.get('commonStockSharesOutstanding')),
             }
             
+            defaults = {key: value for key, value in defaults.items() if value is not None}
+            
             BalanceSheetData.objects.update_or_create(
                 stock=base_stock,
                 report_type=report_type,
@@ -342,17 +354,88 @@ def sync_balance_sheet(data: Dict) -> None:
             )
 
 
+def sync_cash_flow(data: Dict) -> None:
+    """
+    Parses the cash flow data from Alpha Vantage and updates or creates corresponding 
+    Django model instances.
+
+    This function processes both annual and quarterly reports, updating the database with new
+    or updated records for each entry. It logs errors and skips entries with non-USD currency
+    or missing base stock data.
+
+    Args:
+        data (Dict): The cash flow data from Alpha Vantage, including symbol, annual
+        reports, and quarterly reports.
+    """
+    stock_symbol = data['symbol']
+    
+    try:
+        base_stock = BaseStockData.objects.get(symbol=stock_symbol)
+    except BaseStockData.DoesNotExist:
+        logging.error(f"No BaseStockData found for stock symbol: {stock_symbol}. Will not use this data.")
+        return
+    
+    for report_type, reports in [('annual', 'annualReports'), ('quarterly', 'quarterlyReports')]:
+        for entry in data[reports]:
+            if entry['reportedCurrency'] != 'USD':
+                logging.error(f"Reported currency is not USD for stock symbol: {stock_symbol}. Will not use this data.")
+                return
+            
+            date = datetime.datetime.strptime(entry['fiscalDateEnding'], '%Y-%m-%d').date()
+            defaults = {
+                'operating_cashflow': safe_decimal(entry.get('operatingCashflow')),
+                'payments_for_operating_activities': safe_decimal(entry.get('paymentsForOperatingActivities')),
+                'proceeds_from_operating_activities': safe_decimal(entry.get('proceedsFromOperatingActivities')),
+                'change_in_operating_liabilities': safe_decimal(entry.get('changeInOperatingLiabilities')),
+                'change_in_operating_assets': safe_decimal(entry.get('changeInOperatingAssets')),
+                'depreciation_depletion_and_amortization': safe_decimal(entry.get('depreciationDepletionAndAmortization')),
+                'capital_expenditures': safe_decimal(entry.get('capitalExpenditures')),
+                'change_in_receivables': safe_decimal(entry.get('changeInReceivables')),
+                'change_in_inventory': safe_decimal(entry.get('changeInInventory')),
+                'profit_loss': safe_decimal(entry.get('profitLoss')),
+                'cashflow_from_investment': safe_decimal(entry.get('cashflowFromInvestment')),
+                'cashflow_from_financing': safe_decimal(entry.get('cashflowFromFinancing')),
+                'proceeds_from_repayments_of_short_term_debt': safe_decimal(entry.get('proceedsFromRepaymentsOfShortTermDebt')),
+                'payments_for_repurchase_of_common_stock': safe_decimal(entry.get('paymentsForRepurchaseOfCommonStock')),
+                'payments_for_repurchase_of_equity': safe_decimal(entry.get('paymentsForRepurchaseOfEquity')),
+                'payments_for_repurchase_of_preferred_stock': safe_decimal(entry.get('paymentsForRepurchaseOfPreferredStock')),
+                'dividend_payout': safe_decimal(entry.get('dividendPayout')),
+                'dividend_payout_common_stock': safe_decimal(entry.get('dividendPayoutCommonStock')),
+                'dividend_payout_preferred_stock': safe_decimal(entry.get('dividendPayoutPreferredStock')),
+                'proceeds_from_issuance_of_common_stock': safe_decimal(entry.get('proceedsFromIssuanceOfCommonStock')),
+                'proceeds_issuance_long_term_debt_capital_sec_net': safe_decimal(entry.get('proceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet')),
+                'proceeds_from_issuance_of_preferred_stock': safe_decimal(entry.get('proceedsFromIssuanceOfPreferredStock')),
+                'proceeds_from_repurchase_of_equity': safe_decimal(entry.get('proceedsFromRepurchaseOfEquity')),
+                'proceeds_from_sale_of_treasury_stock': safe_decimal(entry.get('proceedsFromSaleOfTreasuryStock')),
+                'change_in_cash_and_cash_equivalents': safe_decimal(entry.get('changeInCashAndCashEquivalents')),
+                'change_in_exchange_rate': safe_decimal(entry.get('changeInExchangeRate')),
+                'net_income': safe_decimal(entry.get('netIncome')),
+            }     
+            defaults = {k: v for k, v in defaults.items() if v is not None}
+            
+            CashFlowData.objects.update_or_create(
+                stock=base_stock,
+                report_type=report_type,
+                date=date,
+                defaults=defaults
+            )
+
+
+
+
 def sync_base_and_quarterly_overview(data: Dict) -> None:
     """
     Parses the company data from Alpha Vantage and updates or creates corresponding 
     Django model instances for BaseStockData and QuarterlyStockOverview.
+    
+    This is the parsing function for the 'OVERVIEW' function from Alpha Vantage.
 
     Args:
         data (Dict): The company data from Alpha Vantage, including symbol, company information,
         and quarterly reports.
     """
     # Extract and update base stock data
-    stock_symbol = data['symbol']
+    stock_symbol = data['Symbol']
     base_stock_defaults = {
         'name': data.get('Name'),
         'description': data.get('Description'),
@@ -365,6 +448,8 @@ def sync_base_and_quarterly_overview(data: Dict) -> None:
         'industry': data.get('Industry'),
         'fiscal_year_end': data.get('FiscalYearEnd'),
     }
+    
+    base_stock_defaults = {key: value for key, value in base_stock_defaults.items() if value is not None}
     
     base_stock, _ = BaseStockData.objects.update_or_create(
         symbol=stock_symbol, defaults=base_stock_defaults
@@ -411,6 +496,8 @@ def sync_base_and_quarterly_overview(data: Dict) -> None:
         'dividend_date': safe_date(data.get('DividendDate')),
         'ex_dividend_date': safe_date(data.get('ExDividendDate')),
     }
+    
+    overview_defaults = {key: value for key, value in overview_defaults.items() if value is not None}
 
     # Using get_or_create to avoid creating duplicates
     QuarterlyStockOverview.objects.update_or_create(
@@ -420,7 +507,60 @@ def sync_base_and_quarterly_overview(data: Dict) -> None:
     )
 
 
-
+# def fetch_data(
+#     stock_symbol: str, 
+#     function: str, 
+#     api_key: None | str = None,
+#     **kwargs
+# ):
+#     """
+#     Fetches data from the Alpha Vantage API for a given stock symbol and function.
+#     Will automatically retry if the request fails due to rate limiting.
+    
+#     Parameters:
+#     - stock_symbol (str): The stock symbol to fetch data for.
+#     - function (str): The function to use for fetching data.
+#     - **kwargs: Additional parameters to pass to the API.
+    
+#     Returns:
+#     - dict: The JSON response from the API.
+    
+#     Raises:
+#         - ValueError: If the API request fails due to an invalid API key or
+#           unexpected response.
+#     """
+#     url = "https://alpha-vantage.p.rapidapi.com/query"
+    
+#     querystring = {
+#         "symbol": stock_symbol,
+#         "function": function,
+#         "datatype": "json",
+#         **kwargs
+#     }
+    
+#     if not api_key:
+#         api_key = settings.RAPIDAPI_KEY
+#         # api_key = os.getenv("RAPIDAPI_KEY")
+#         if not api_key:
+#             raise ValueError('API key not provided')
+    
+#     headers = {
+#         "X-RapidAPI-Key": api_key,
+#         "X-RapidAPI-Host": "alpha-vantage.p.rapidapi.com"
+#     }
+    
+#     response = requests.get(url, headers=headers, params=querystring)
+    
+#     if response.status_code == 200:
+#         return response.json()
+#     elif response.status_code == 429:
+#         print('Rate limit exceeded.  Waiting 60 seconds and trying again.')
+#         time.sleep(60)
+#         return fetch_data(stock_symbol, function, api_key, **kwargs)
+#     else:
+#         error_message = f'Error fetching data: {response.status_code}'
+#         print(error_message)
+#         raise ValueError(error_message)
 
 # def pull_and_parse(
 #     companies: list[str], 

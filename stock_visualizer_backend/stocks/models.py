@@ -105,9 +105,6 @@ class QuarterlyStockOverview(models.Model):
         return f"{self.stock.symbol} ({self.quarter_end_date})"
 
 
-
-
-
 class MonthlyStockPriceData(models.Model):
     stock = models.ForeignKey(
         BaseStockData,
@@ -128,8 +125,6 @@ class MonthlyStockPriceData(models.Model):
 
     def __str__(self):
         return f"{self.stock.symbol} - {self.date}"
-
-
 
 
 # We are going to use this metaclass to construct the IncomeStatementData and BalanceSheetData classes
@@ -182,8 +177,6 @@ class IncomeStatementData(models.Model, metaclass=FinancialDataMeta):
         'ebitda',
         'net_income',
     ]
-
-
     class Meta:
         unique_together = ('stock', 'report_type', 'date')
 
@@ -244,6 +237,55 @@ class BalanceSheetData(models.Model, metaclass=FinancialDataMeta):
         unique_together = ('stock', 'report_type', 'date')
 
 
+class CashFlowData(models.Model, metaclass=FinancialDataMeta):
+    REPORT_TYPE_CHOICES = [
+        ('annual', 'Annual'),
+        ('quarterly', 'Quarterly'),
+    ]
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='cash_flow_data',
+        null=True,
+    )
+    report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
+    date = models.DateField()
+
+    financial_fields = [
+        'operating_cashflow',
+        'payments_for_operating_activities',
+        'proceeds_from_operating_activities',
+        'change_in_operating_liabilities',
+        'change_in_operating_assets',
+        'depreciation_depletion_and_amortization',
+        'capital_expenditures',
+        'change_in_receivables',
+        'change_in_inventory',
+        'profit_loss',
+        'cashflow_from_investment',
+        'cashflow_from_financing',
+        'proceeds_from_repayments_of_short_term_debt',
+        'payments_for_repurchase_of_common_stock',
+        'payments_for_repurchase_of_equity',
+        'payments_for_repurchase_of_preferred_stock',
+        'dividend_payout',
+        'dividend_payout_common_stock',
+        'dividend_payout_preferred_stock',
+        'proceeds_from_issuance_of_common_stock',
+        'proceeds_issuance_long_term_debt_capital_sec_net',
+        'proceeds_from_issuance_of_preferred_stock',
+        'proceeds_from_repurchase_of_equity',
+        'proceeds_from_sale_of_treasury_stock',
+        'change_in_cash_and_cash_equivalents',
+        'change_in_exchange_rate',
+        'net_income',
+    ]
+
+    class Meta:
+        unique_together = ('stock', 'report_type', 'date')
+
+    def __str__(self):
+        return f"{self.stock.symbol} - {self.report_type} - {self.date}"
 
 
 
