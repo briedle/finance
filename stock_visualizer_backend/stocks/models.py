@@ -3,6 +3,15 @@ from django.db import models
 
 # Create your models here.
 
+class StockDecimalField(models.DecimalField):
+    def __init__(self, *args, **kwargs):
+        # Set default values for max_digits and decimal_places
+        kwargs.setdefault('max_digits', 15)
+        kwargs.setdefault('decimal_places', 2)
+        kwargs.setdefault('null', True)
+        kwargs.setdefault('blank', True)
+        super().__init__(*args, **kwargs)
+
 class BaseStockData(models.Model):
     SECTOR_CHOICES = [
         ('Industrials', 'Industrials'),
@@ -92,3 +101,70 @@ class IncomeStatementData(models.Model):
     def __str__(self):
         return f"{self.symbol} - {self.date} - {self.report_type}"
 
+
+class BalanceSheetDataMeta(type(models.Model)):
+    def __new__(cls, name, bases, attrs):
+        balance_sheet_fields = [
+            'total_assets',
+            'total_current_assets',
+            'cash_and_cash_equivalents_at_carrying_value',
+            'cash_and_short_term_investments',
+            'inventory',
+            'current_net_receivables',
+            'total_non_current_assets',
+            'property_plant_equipment',
+            'accumulated_depreciation_amortization_ppe',
+            'intangible_assets',
+            'intangible_assets_excluding_goodwill',
+            'goodwill',
+            'investments',
+            'long_term_investments',
+            'short_term_investments',
+            'other_current_assets',
+            'other_non_current_assets',
+            'total_liabilities',
+            'total_current_liabilities',
+            'current_accounts_payable',
+            'deferred_revenue',
+            'current_debt',
+            'short_term_debt',
+            'total_non_current_liabilities',
+            'capital_lease_obligations',
+            'long_term_debt',
+            'current_long_term_debt',
+            'long_term_debt_noncurrent',
+            'short_long_term_debt_total',
+            'other_current_liabilities',
+            'other_non_current_liabilities',
+            'total_shareholder_equity',
+            'treasury_stock',
+            'retained_earnings',
+            'common_stock',
+            'common_stock_shares_outstanding'
+        ]
+            
+        for field_name in balance_sheet_fields:
+            attrs[field_name] = StockDecimalField()
+
+        return super().__new__(cls, name, bases, attrs)
+    
+    
+class BalanceSheetData(models.Model):
+    REPORT_TYPE_CHOICES = [
+        ('annual', 'Annual'),
+        ('quarterly', 'Quarterly'),
+    ]
+    stock = models.ForeignKey(
+        BaseStockData,
+        on_delete=models.CASCADE,
+        related_name='balance_sheet_data',
+        null=True,
+        )
+    report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
+    date = models.DateField()
+        
+    class Meta:
+        unique_together = ('stock', 'report_type', 'date')
+
+    def __str__(self):
+        return f"{self.symbol} - {self.date} - {self.report_type}"
