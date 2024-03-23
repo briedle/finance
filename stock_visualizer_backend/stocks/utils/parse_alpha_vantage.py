@@ -3,7 +3,7 @@ import time
 import decimal
 import os
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List
@@ -168,9 +168,81 @@ def sync_income_statement(data: Dict) -> None:
                 defaults=defaults
             )
             
-# TODO: WE STILL NEED TO IMPLEMENT THE sync_balance_sheet function!!
 def sync_balance_sheet(data: Dict) -> None:
-    pass
+    """
+    Parses the balance sheet data from Alpha Vantage and updates or creates corresponding 
+    Django model instances.
+
+    This function processes both annual and quarterly reports, updating the database with new
+    or updated records for each entry. It logs errors and skips entries with non-USD currency
+    or missing base stock data.
+
+    Args:
+        data (Dict): The balance sheet data from Alpha Vantage, including symbol, annual
+        reports, and quarterly reports.
+    """
+    stock_symbol = data['symbol']
+    
+    try:
+        base_stock = BaseStockData.objects.get(symbol=stock_symbol)
+    except BaseStockData.DoesNotExist:
+        logging.error(f"No BaseStockData found for stock symbol: {stock_symbol}. Will not use this data.")
+        return  # Exit function if base stock data is not found
+    
+    for report_type, reports in [('annual', 'annualReports'), ('quarterly', 'quarterlyReports')]:
+        for entry in data[reports]:
+            if entry['reportedCurrency'] != 'USD':
+                logging.error(f"Reported currency is not USD for stock symbol: {stock_symbol}. Will not use this data.")
+                return
+            
+            date = datetime.datetime.strptime(entry['fiscalDateEnding'], '%Y-%m-%d').date()
+            defaults = {
+                # Replace these with actual mappings from your data source to the BalanceSheetData model
+                'total_assets': safe_decimal(entry.get('totalAssets')),
+                'total_current_assets': safe_decimal(entry.get('totalCurrentAssets')),
+                'cash_and_cash_equivalents_at_carrying_value': safe_decimal(entry.get('cashAndCashEquivalentsAtCarryingValue')),
+                'cash_and_short_term_investments': safe_decimal(entry.get('cashAndShortTermInvestments')),
+                'inventory': safe_decimal(entry.get('inventory')),
+                'current_net_receivables': safe_decimal(entry.get('currentNetReceivables')),
+                'total_non_current_assets': safe_decimal(entry.get('totalNonCurrentAssets')),
+                'property_plant_equipment': safe_decimal(entry.get('propertyPlantEquipment')),
+                'accumulated_depreciation_amortization_ppe': safe_decimal(entry.get('accumulatedDepreciationAmortizationPPE')),
+                'intangible_assets': safe_decimal(entry.get('intangibleAssets')),
+                'intangible_assets_excluding_goodwill': safe_decimal(entry.get('intangibleAssetsExcludingGoodwill')),
+                'goodwill': safe_decimal(entry.get('goodwill')),
+                'investments': safe_decimal(entry.get('investments')),
+                'long_term_investments': safe_decimal(entry.get('longTermInvestments')),
+                'short_term_investments': safe_decimal(entry.get('shortTermInvestments')),
+                'other_current_assets': safe_decimal(entry.get('otherCurrentAssets')),
+                'other_non_current_assets': safe_decimal(entry.get('otherNonCurrentAssets')),
+                'total_liabilities': safe_decimal(entry.get('totalLiabilities')),
+                'total_current_liabilities': safe_decimal(entry.get('totalCurrentLiabilities')),
+                'current_accounts_payable': safe_decimal(entry.get('currentAccountsPayable')),
+                'deferred_revenue': safe_decimal(entry.get('deferredRevenue')),
+                'current_debt': safe_decimal(entry.get('currentDebt')),
+                'short_term_debt': safe_decimal(entry.get('shortTermDebt')),
+                'total_non_current_liabilities': safe_decimal(entry.get('totalNonCurrentLiabilities')),
+                'capital_lease_obligations': safe_decimal(entry.get('capitalLeaseObligations')),
+                'long_term_debt': safe_decimal(entry.get('longTermDebt')),
+                'current_long_term_debt': safe_decimal(entry.get('currentLongTermDebt')),
+                'long_term_debt_noncurrent': safe_decimal(entry.get('longTermDebtNoncurrent')),
+                'short_long_term_debt_total': safe_decimal(entry.get('shortLongTermDebtTotal')),
+                'other_current_liabilities': safe_decimal(entry.get('otherCurrentLiabilities')),
+                'other_non_current_liabilities': safe_decimal(entry.get('otherNonCurrentLiabilities')),
+                'total_shareholder_equity': safe_decimal(entry.get('totalShareholderEquity')),
+                'treasury_stock': safe_decimal(entry.get('treasuryStock')),
+                'retained_earnings': safe_decimal(entry.get('retainedEarnings')),
+                'common_stock': safe_decimal(entry.get('commonStock')),
+                'common_stock_shares_outstanding': safe_decimal(entry.get('commonStockSharesOutstanding')),
+            }
+            
+            BalanceSheetData.objects.update_or_create(
+                stock=base_stock,
+                report_type=report_type,
+                date=date,
+                defaults=defaults
+            )
+
 
        
  

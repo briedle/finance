@@ -63,8 +63,14 @@ class Command(BaseCommand):
                     function=function,
                     api_key=settings.RAPIDAPI_KEY
                 )
-                if data:
-                    sync_func(data)
-                    self.stdout.write(f"Fetched and synced data for {stock.symbol} using {sync_func.__name__}")
             except Exception as e:
-                logging.error(f"Error fetching/syncing data for {stock.symbol}: {e}")
+                logging.error(f"Error fetching data for {stock.symbol}: {e}")
+                continue
+            
+            try:
+                sync_func(data)
+                self.stdout.write(f"Fetched and synced data for {stock.symbol} using {sync_func.__name__}")
+            except Exception as e:
+                logging.error(f"Error syncing data for {stock.symbol}: {e}")
+                
+
