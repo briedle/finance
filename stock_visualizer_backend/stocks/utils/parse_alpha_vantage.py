@@ -1,7 +1,7 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, FFRData
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List
@@ -10,6 +10,90 @@ import csv
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
 
+CURRENTLY_IMPLEMENTED_FUNCTIONS = [
+    'TIME_SERIES_MONTHLY_ADJUSTED',
+    "OVERVIEW",
+    "INCOME_STATEMENT",
+    "BALANCE_SHEET",
+    "CASH_FLOW",
+    "EARNINGS",
+]
+
+
+
+
+AV_SYMBOL_FUNCTIONS = [
+    'TIME_SERIES_INTRADAY',
+    'TIME_SERIES_DAILY',
+    'TIME_SERIES_DAILY_ADJUSTED',
+    'TIME_SERIES_WEEKLY',
+    'TIME_SERIES_WEEKLY_ADJUSTED',
+    'TIME_SERIES_MONTHLY',
+    'TIME_SERIES_MONTHLY_ADJUSTED',
+    'GLOBAL_QUOTE', # lightweight alternative to TIME_SERIES_DAILY
+    'SYMBOL_SEARCH', # could be useful for user interface later
+    "OVERVIEW",
+    "INCOME_STATEMENT",
+    "BALANCE_SHEET",
+    "CASH_FLOW",
+    "EARNINGS",
+]
+
+AV_OTHER_STOCK_FUNCTIONS = [
+    'MARKET_STATUS', # open or closed 
+    'NEWS_SENTIMENT', # won't worry about for now -- looks into news stories
+    'TOP_GAINERS_LOSERS', # could be interesting 
+    # SKIPPING ANALYTICS AND ANALYTICS (SLIDING WINDOW)
+    'LISTING_STATUS', # This could be interesting to adjust for survivor bias, but won't worryh about for now
+    'EARNINGS_CALENDAR',
+    'IPO_CALENDAR',
+]
+
+FOREX_FUNCTIONS = [
+    'CURRENCY_EXCHANGE_RATE',
+    'FX_INTRADAY',
+    'FX_DAILY',
+    'FX_WEEKLY',
+    'FX_MONTHLY',
+]
+
+CRYPTO_FUNCTIONS = [
+    'CURRENCY_EXCHANGE_RATE',
+    'CRYPTO_INTRADAY',
+    'DIGITAL_CURRENCY_DAILY',
+    'DIGITAL_CURRENCY_WEEKLY',
+    'DIGITAL_CURRENCY_MONTHLY',
+]
+
+COMMODITIES_FUNCTIONS = [
+    'WTI',
+    'BRENT',
+    'NATURAL_GAS',
+    'COPPER',
+    'ALUMINUM',
+    'WHEAT',
+    'CORN',
+    'COTTON',
+    'SUGAR',
+    'COFFEE',
+    'ALL_COMMODITIES',
+]
+
+ECONOMIC_INDICATOR_FUNCTIONS = [
+    'REAL_GDP',
+    'REAL_GDP_PER_CAPITA',
+    'TREASURY_YIELD',
+    'FEDERAL_FUNDS_RATE',
+    'CPI',
+    'INFLATION',
+    'RETAIL_SALES',
+    'DURABLES',
+    'UNEMPLOYMENT',
+    'NONFARM_PAYROLL',
+]
+    
+# LEAVING OUT TECHNICAL INDICATORS FOR NOW
+    
 
 def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
     """
@@ -23,7 +107,7 @@ def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Deci
     Returns:
         Optional[Decimal]: The converted Decimal value or the default value if conversion fails.
     """
-    if value in (None, 'None', ''):
+    if value in (None, 'None', '', '-'):
         return default
     try:
         return Decimal(value.strip())
@@ -44,10 +128,10 @@ def safe_int(value: str, default: Optional[int] = None) -> Optional[int]:
     Returns:
         Optional[int]: The converted integer value or the default value if conversion fails.
     """
-    if value in (None, 'None', ''):
+    if value in (None, 'None', '', '-'):
         return default
     try:
-        return int(value.strip())
+        return round(float(value.strip()))
     except (ValueError, TypeError):
         logging.error(f"Invalid integer value: {value}")
         return default
@@ -65,7 +149,7 @@ def safe_date(value: str, default: Optional[datetime.date] = None) -> Optional[d
     Returns:
         Optional[datetime.date]: The converted date object or the default value if conversion fails.
     """
-    if value in (None, 'None', ''):
+    if value in (None, 'None', '', '-'):
         return default
     try:
         return datetime.datetime.strptime(value.strip(), '%Y-%m-%d').date()
@@ -536,8 +620,6 @@ def sync_earnings(data: Dict) -> None:
         )
 
 
-
-
 def sync_base_and_quarterly_overview(data: Dict) -> None:
     """
     Parses the company data from Alpha Vantage and updates or creates corresponding 
@@ -630,7 +712,8 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
       2.  It returns a csv, not json
       3.  We are not going to run this through the sync_av_data command line tool.  We are just 
           going to execute this from the Django shell.
-      4.  We 
+      4.  I also set the api_key to be 'demo' here because it was not working with my API key
+            for some reason.
 
     Args:
         api_key (str): The API key for Alpha Vantage.
@@ -673,6 +756,75 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
                         'estimate': estimate_decimal,
                     }
                 )
+
+
+
+def sync_gdp(interval: str, per_capita: bool, api_key: None | str = None):
+    """
+    Synchronizes the Real GDP or Real GDP per Capita data with the local database.
+    
+    This is another function that we will just want to call in a Django shell (or something).
+    We will not need to run this through the sync_av_data command line tool because it really only
+    requires 4 API calls: (1) interval = quarterly and annually and (2) per_capita = True and False.
+
+    Parameters:
+    - api_key (str): The API key for Alpha Vantage.
+    - interval (str): The interval of the GDP data ("annual" or "quarterly").
+    - per_capita (bool): True if synchronizing Real GDP per Capita, False for Real GDP.
+    """
+    
+    if interval not in ('annual', 'quarterly'):
+        raise ValueError("Invalid interval. Must be 'annual' or 'quarterly'.")
+    
+    if not api_key:
+        api_key = settings.RAPIDAPI_KEY
+        # api_key = os.getenv("RAPIDAPI_KEY")
+        if not api_key:
+            raise ValueError('API key not provided')
+    
+    function = 'REAL_GDP_PER_CAPITA' if per_capita else 'REAL_GDP'  # Adjust based on the actual API function names
+
+    data = fetch_data(function=function, api_key=api_key, interval=interval)
+
+    if 'data' not in data:
+        raise ValueError("The API response is missing the 'data' key.")
+
+    with transaction.atomic():
+        for item in data['data']:
+            date = safe_date(item['date'])
+            value = safe_int(item['value'])
+            if value:
+                GDPData.objects.update_or_create(
+                    date=date,
+                    interval=interval,
+                    per_capita=per_capita,
+                    defaults={'value': value}
+                )
+
+
+def sync_ffr(api_key: None | str = None):
+    """
+    Parses and stores the Effective Federal Funds Rate data.
+
+    Parameters:
+    - data (dict): The API response data containing the Effective Federal Funds Rate.
+    """
+    if not api_key:
+        api_key = settings.RAPIDAPI_KEY
+        # api_key = os.getenv("RAPIDAPI_KEY")
+        if not api_key:
+            raise ValueError('API key not provided')
+    
+    function = 'FEDERAL_FUNDS_RATE'
+    data = fetch_data(function=function, api_key=api_key)
+
+    for item in data.get('data', []):
+        date = safe_date(item.get('date'))
+        try: 
+            rate = safe_decimal(item.get('rate')) / 100
+        except TypeError:
+            rate = None
+        FFRData.objects.update_or_create(date=date, defaults={'rate': rate})
 
 
 

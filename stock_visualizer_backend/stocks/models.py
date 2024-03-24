@@ -324,16 +324,42 @@ class EarningsCalendarData(models.Model):
         unique_together = ('stock', 'current_date', 'report_date')
 
 
+class GDPData(models.Model): 
+    REPORT_TYPE_CHOICES = [
+        ('annual', 'Annual'),
+        ('quarterly', 'Quarterly'),
+    ]
+    
+    date = models.DateField()
+    interval = models.CharField(max_length=10, choices=REPORT_TYPE_CHOICES)  # 'annual' or 'quarterly'
+    per_capita = models.BooleanField()
+    value = models.PositiveBigIntegerField()
+    # value = models.DecimalField(max_digits=20, decimal_places=)
+
+    class Meta:
+        verbose_name = "US Real GDP (per Capita in 2012 dollars and aggregate)"
+        verbose_name_plural = "US Real GDP (per Capita in 2012 dollars and aggregate) Data"
+        unique_together = ('date', 'interval', 'per_capita')
+
+    def __str__(self):
+        return f"Real GDP{' Per Capita (2012 dollars) ' if self.per_capita else ''} on {self.date} ({self.interval})"
 
 
+class FFRData(models.Model):
+    date = models.DateField(unique=True)
+    rate = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
 
+    def __str__(self):
+        try:
+            percent = 100 * self.rate
+        except TypeError:
+            percent = 'Unknown'
+        return f"{self.date}: {percent}%"
 
-
-
-
-
-
-
+    class Meta:
+        verbose_name = "Effective Federal Funds Rate"
+        verbose_name_plural = "Effective Federal Funds Rate Data"
+        ordering = ['-date']
 
 
 
