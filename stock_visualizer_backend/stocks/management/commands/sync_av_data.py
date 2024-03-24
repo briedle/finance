@@ -85,6 +85,6 @@ class Command(BaseCommand):
             
             try:
                 sync_func(data)
-                self.stdout.write(f"Fetched and synced data for {stock.symbol} using {sync_func.__name__}")
+                self.stdout.write(f"Fetched and synced {function} for {stock.symbol}")
             except Exception as e:
-                logging.error(f"Error syncing data for {stock.symbol}: {e}")
+                logging.error(f"Error syncing {function} for {stock.symbol}: {e}")
