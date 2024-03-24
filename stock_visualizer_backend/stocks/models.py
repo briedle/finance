@@ -343,6 +343,22 @@ class GDPData(models.Model):
 
     def __str__(self):
         return f"Real GDP{' Per Capita (2012 dollars) ' if self.per_capita else ''} on {self.date} ({self.interval})"
+    
+
+class TreasuryYieldData(models.Model):
+    date = models.DateField()
+    maturity_months = models.IntegerField()
+    value = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)  # Adjust max_digits and decimal_places as needed
+
+
+    class Meta:
+        unique_together = ('date', 'maturity_months')
+        verbose_name = "Treasury Yield"
+        verbose_name_plural = "Treasury Yields"
+
+    def __str__(self):
+        return f"{self.maturity_months} months yield on {self.date}: {100 * self.value}%"
+
 
 
 class FFRData(models.Model):

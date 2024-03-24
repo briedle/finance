@@ -1,7 +1,7 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, FFRData, CPIData, InflationData, RetailSalesData, DurablesData, UnemploymentData, NonfarmPayrollData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, TreasuryYieldData, FFRData, CPIData, InflationData, RetailSalesData, DurablesData, UnemploymentData, NonfarmPayrollData
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List, Type
@@ -126,8 +126,17 @@ ECONOMIC_INDICATORS_CONFIG = {
         'value_transform_func': lambda x: x * 1_000,  # Convert thousands to absolute number
     },
 }
-    
 
+MATURITY_TO_MONTHS = {
+    '3month': 3,
+    '2year': 24,
+    '5year': 60,
+    '7year': 84,
+    '10year': 120,
+    '30year': 360,
+}
+
+    
 def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
     """
     Safely converts a string to a Decimal. If the conversion fails or the value is 'None',
@@ -140,7 +149,7 @@ def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Deci
     Returns:
         Optional[Decimal]: The converted Decimal value or the default value if conversion fails.
     """
-    if value in (None, 'None', '', '-'):
+    if value in (None, 'None', '', '-', '.'):
         return default
     try:
         return Decimal(value.strip())
@@ -161,7 +170,7 @@ def safe_int(value: str, default: Optional[int] = None) -> Optional[int]:
     Returns:
         Optional[int]: The converted integer value or the default value if conversion fails.
     """
-    if value in (None, 'None', '', '-'):
+    if value in (None, 'None', '', '-', '.'):
         return default
     try:
         return round(float(value.strip()))
@@ -182,7 +191,7 @@ def safe_date(value: str, default: Optional[datetime.date] = None) -> Optional[d
     Returns:
         Optional[datetime.date]: The converted date object or the default value if conversion fails.
     """
-    if value in (None, 'None', '', '-'):
+    if value in (None, 'None', '', '-', '.'):
         return default
     try:
         return datetime.datetime.strptime(value.strip(), '%Y-%m-%d').date()
@@ -790,50 +799,103 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
                 )
 
 
-
-def sync_gdp(interval: str, per_capita: bool, api_key: None | str = None):
+def sync_gdp(api_key: None | str = None):
     """
-    Synchronizes the Real GDP or Real GDP per Capita data with the local database.
+    Synchronizes the Real GDP and Real GDP per Capita data with the local database for all intervals.
     
-    This is another function that we will just want to call in a Django shell (or something).
-    We will not need to run this through the sync_av_data command line tool because it really only
-    requires 4 API calls: (1) interval = quarterly and annually and (2) per_capita = True and False.
+    This function iterates over all 4 combinations of `interval` = ['quarterly', 'annual'] and the
+    boolean `per_capita`, fetching and synchronizing the data for each combination.
 
     Parameters:
-    - api_key (str): The API key for Alpha Vantage.
-    - interval (str): The interval of the GDP data ("annual" or "quarterly").
-    - per_capita (bool): True if synchronizing Real GDP per Capita, False for Real GDP.
+    - api_key (str, optional): The API key for Alpha Vantage. If not provided, it will use the key
+        from settings.
     """
-    
-    if interval not in ('annual', 'quarterly'):
-        raise ValueError("Invalid interval. Must be 'annual' or 'quarterly'.")
+
+    intervals = ['annual', 'quarterly']
+    per_capita_options = [True, False]
     
     if not api_key:
         api_key = settings.RAPIDAPI_KEY
-        # api_key = os.getenv("RAPIDAPI_KEY")
         if not api_key:
             raise ValueError('API key not provided')
     
-    function = 'REAL_GDP_PER_CAPITA' if per_capita else 'REAL_GDP'  # Adjust based on the actual API function names
+    for interval in intervals:
+        for per_capita in per_capita_options:
+            function = 'REAL_GDP_PER_CAPITA' if per_capita else 'REAL_GDP'
+            try:
+                data = fetch_data(function=function, api_key=api_key, interval=interval)
+            except Exception as e:
+                logger.error(f"Failed to fetch data for {function} and interval {interval}: {e}")
+                continue
+                
+            if 'data' not in data:
+                logger.error(
+                    f'The API response for {function} and interval {interval} is '
+                    f'missing the "data" key.'
+                )
+                continue
+            
+            with transaction.atomic():
+                try: 
+                    for item in data['data']:
+                        date = safe_date(item['date'])
+                        value = safe_decimal(item['value'])
+                        if value is not None:
+                            GDPData.objects.update_or_create(
+                                date=date,
+                                interval=interval,
+                                per_capita=per_capita,
+                                defaults={'value': value}
+                            )
+                    logger.info(f"Successfully synced {function} data for {interval} interval.")
+                except Exception as e:
+                    logger.error(f"Failed to sync {function} data for {interval} interval: {e}")
+                    continue
 
-    data = fetch_data(function=function, api_key=api_key, interval=interval)
+             
+def sync_treasury_yield(api_key: None | str = None, maturities: None | list = None):
+    if not api_key:
+        api_key = settings.RAPIDAPI_KEY
+        if not api_key:
+            raise ValueError('API key not provided')
 
-    if 'data' not in data:
-        raise ValueError("The API response is missing the 'data' key.")
+    if maturities is None:
+        maturities = ['3month', '2year', '5year', '7year', '10year', '30year']
 
-    with transaction.atomic():
-        for item in data['data']:
-            date = safe_date(item['date'])
-            value = safe_int(item['value'])
-            if value:
-                GDPData.objects.update_or_create(
+    for maturity_label in maturities:
+        maturity_months = MATURITY_TO_MONTHS[maturity_label]
+        try:
+            data = fetch_data(
+                function='TREASURY_YIELD',
+                interval='daily',
+                maturity=maturity_label,
+                api_key=api_key
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to fetch data for {maturity_label}: {e}")
+
+        if 'data' not in data:
+            raise ValueError(f"The API response for {maturity_label} is missing the 'data' key.")
+
+        null_count = 0
+        with transaction.atomic():
+            for item in data['data']:
+                date = safe_date(item['date'])
+                try:
+                    value = safe_decimal(item['value']) / 100  # Convert percentage to decimal
+                    null_count += 1
+                except TypeError as e:
+                    value = None
+  
+                TreasuryYieldData.objects.update_or_create(
                     date=date,
-                    interval=interval,
-                    per_capita=per_capita,
+                    maturity_months=maturity_months,
                     defaults={'value': value}
                 )
-
-
+        logger.info(
+            f'Successfully synced treasury yield data for {maturity_label} maturity '
+            f'with {null_count} null values'
+        )
 
 
 def sync_data(
@@ -918,7 +980,52 @@ def sync_economic_indicators(data_sync_config: None | Dict[str, Dict] = None):
             logger.info(f"Successfully synced data for {function}")
         except ValueError as e:
             logger.error(f"Error syncing data for {function}: {e}")
+    
+    sync_gdp()
+    sync_treasury_yield()
 
+
+# def sync_gdp(interval: str, per_capita: bool, api_key: None | str = None):
+#     """
+#     Synchronizes the Real GDP or Real GDP per Capita data with the local database.
+    
+#     This is another function that we will just want to call in a Django shell (or something).
+#     We will not need to run this through the sync_av_data command line tool because it really only
+#     requires 4 API calls: (1) interval = quarterly and annually and (2) per_capita = True and False.
+
+#     Parameters:
+#     - api_key (str): The API key for Alpha Vantage.
+#     - interval (str): The interval of the GDP data ("annual" or "quarterly").
+#     - per_capita (bool): True if synchronizing Real GDP per Capita, False for Real GDP.
+#     """
+    
+#     if interval not in ('annual', 'quarterly'):
+#         raise ValueError("Invalid interval. Must be 'annual' or 'quarterly'.")
+    
+#     if not api_key:
+#         api_key = settings.RAPIDAPI_KEY
+#         # api_key = os.getenv("RAPIDAPI_KEY")
+#         if not api_key:
+#             raise ValueError('API key not provided')
+    
+#     function = 'REAL_GDP_PER_CAPITA' if per_capita else 'REAL_GDP'  # Adjust based on the actual API function names
+
+#     data = fetch_data(function=function, api_key=api_key, interval=interval)
+
+#     if 'data' not in data:
+#         raise ValueError("The API response is missing the 'data' key.")
+
+#     with transaction.atomic():
+#         for item in data['data']:
+#             date = safe_date(item['date'])
+#             value = safe_int(item['value'])
+#             if value:
+#                 GDPData.objects.update_or_create(
+#                     date=date,
+#                     interval=interval,
+#                     per_capita=per_capita,
+#                     defaults={'value': value}
+#                 )
 
 # I don't think we are going to need this either
 # def sync_ffr(api_key: None | str = None):
