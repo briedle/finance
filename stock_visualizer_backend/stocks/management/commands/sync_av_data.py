@@ -1,24 +1,28 @@
 from django.core.management.base import BaseCommand
 from stocks.utils import parse_alpha_vantage as pav
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, EarningsData, QuarterlyStockOverview
+from stocks.models import BaseStockData, StockPriceData, IncomeStatementData, BalanceSheetData, CashFlowData, EarningsData, QuarterlyStockOverview
 from django.conf import settings
 import logging
+import functools
 
 class Command(BaseCommand):
     help = 'Fetches stock data for a set of stocks based on the provided function and checks for existing data if specified.'
 
     function_to_syncing = {
-        'TIME_SERIES_MONTHLY_ADJUSTED': pav.sync_monthly_adjusted,
+        'TIME_SERIES_DAILY_ADJUSTED': functools.partial(pav.sync_stock_price_data, interval='daily'),
+        'TIME_SERIES_WEEKLY_ADJUSTED': functools.partial(pav.sync_stock_price_data, interval='weekly'),
+        'TIME_SERIES_MONTHLY_ADJUSTED': functools.partial(pav.sync_stock_price_data, interval='monthly'),
+        'OVERVIEW': pav.sync_base_and_quarterly_overview,  
         'INCOME_STATEMENT': pav.sync_income_statement,
         'BALANCE_SHEET': pav.sync_balance_sheet,
-        'OVERVIEW': pav.sync_base_and_quarterly_overview,  
         'CASH_FLOW': pav.sync_cash_flow,
         'EARNINGS': pav.sync_earnings,
     }
 
-    # For this special case, we'll handle the existence check differently
     function_to_model = {
-        'TIME_SERIES_MONTHLY_ADJUSTED': MonthlyStockPriceData,
+        'TIME_SERIES_DAILY_ADJUSTED': StockPriceData,
+        'TIME_SERIES_WEEKLY_ADJUSTED': StockPriceData,
+        'TIME_SERIES_MONTHLY_ADJUSTED': StockPriceData,
         'INCOME_STATEMENT': IncomeStatementData,
         'BALANCE_SHEET': BalanceSheetData,
         'CASH_FLOW': CashFlowData,

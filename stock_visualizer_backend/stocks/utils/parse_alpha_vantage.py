@@ -1,7 +1,7 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, TreasuryYieldData, FFRData, CPIData, InflationData, RetailSalesData, DurablesData, UnemploymentData, NonfarmPayrollData
+from stocks.models import BaseStockData, StockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, TreasuryYieldData, FFRData, CPIData, InflationData, RetailSalesData, DurablesData, UnemploymentData, NonfarmPayrollData
 from django.conf import settings
 import logging
 from typing import Dict, Optional, Union, List, Type
@@ -358,21 +358,29 @@ def fetch_csv_data(
 
     raise ValueError("Max retries exceeded. Failed to fetch data.")
 
-def sync_monthly_adjusted(data: dict):
+
+def sync_stock_price_data(data: dict, interval: str):
     """
-    Parse the given Alpha Vantage's TIME_SERIES_MONTHLY_ADJUSTED data and create Django model 
+    Parses the given Alpha Vantage's TIME_SERIES_{INTERVAL}_ADJUSTED data and create Django model 
     instances.
 
     Args:
         data (dict): A dictionary containing the data for parsing.
-        ModelClass: The Django model class to instantiate with the parsed data.
+        interval (str): The interval of the data ('daily', 'weekly', 'monthly').
     """
     stock_symbol = data['Meta Data']['2. Symbol']
     
     # Fetch the BaseStockData instance
     base_stock, _ = BaseStockData.objects.get_or_create(symbol=stock_symbol)
     
-    for date_str, values in data['Monthly Adjusted Time Series'].items():
+    if interval not in ('daily', 'weekly', 'monthly'):
+        raise ValueError(f"Invalid interval: {interval}. Must be 'daily', 'weekly', or 'monthly'.")
+    elif interval == 'daily': 
+        time_series_key = 'Time Series (Daily)'
+    else:
+        time_series_key = f'{interval.capitalize()} Adjusted Time Series' 
+    
+    for date_str, values in data[time_series_key].items():
         date = safe_date(date_str)
         
         defaults = {
@@ -383,15 +391,19 @@ def sync_monthly_adjusted(data: dict):
             'adj_close': safe_decimal(values['5. adjusted close']),
             'volume': safe_int(values['6. volume']),
             'dividend': safe_decimal(values['7. dividend amount']),
+            'interval': interval,
+            'split_coefficient': safe_decimal(values.get('8. split coefficient', None)),
         }
         
-        defaults = {key: value for key, value in defaults.items() if value is not None}
-    
-        MonthlyStockPriceData.objects.update_or_create(
+        StockPriceData.objects.update_or_create(
             stock=base_stock,
             date=date,
+            interval=interval,
             defaults=defaults
         )
+
+
+# 
 
 # INCOME STATEMENT 
 
@@ -884,7 +896,7 @@ def sync_treasury_yield(api_key: None | str = None, maturities: None | list = No
                 try:
                     value = safe_decimal(item['value']) / 100  # Convert percentage to decimal
                     null_count += 1
-                except TypeError as e:
+                except TypeError:
                     value = None
   
                 TreasuryYieldData.objects.update_or_create(
@@ -984,6 +996,41 @@ def sync_economic_indicators(data_sync_config: None | Dict[str, Dict] = None):
     sync_gdp()
     sync_treasury_yield()
 
+
+# def sync_monthly_adjusted(data: dict):
+#     """
+#     Parse the given Alpha Vantage's TIME_SERIES_MONTHLY_ADJUSTED data and create Django model 
+#     instances.
+
+#     Args:
+#         data (dict): A dictionary containing the data for parsing.
+#         ModelClass: The Django model class to instantiate with the parsed data.
+#     """
+#     stock_symbol = data['Meta Data']['2. Symbol']
+    
+#     # Fetch the BaseStockData instance
+#     base_stock, _ = BaseStockData.objects.get_or_create(symbol=stock_symbol)
+    
+#     for date_str, values in data['Monthly Adjusted Time Series'].items():
+#         date = safe_date(date_str)
+        
+#         defaults = {
+#             'open': safe_decimal(values['1. open']),
+#             'high': safe_decimal(values['2. high']),
+#             'low': safe_decimal(values['3. low']),
+#             'close': safe_decimal(values['4. close']),
+#             'adj_close': safe_decimal(values['5. adjusted close']),
+#             'volume': safe_int(values['6. volume']),
+#             'dividend': safe_decimal(values['7. dividend amount']),
+#         }
+        
+#         defaults = {key: value for key, value in defaults.items() if value is not None}
+    
+#         MonthlyStockPriceData.objects.update_or_create(
+#             stock=base_stock,
+#             date=date,
+#             defaults=defaults
+#         )
 
 # def sync_gdp(interval: str, per_capita: bool, api_key: None | str = None):
 #     """
@@ -1396,8 +1443,8 @@ def str_none_to_none(value):
         return value
 
 
-if __name__ == '__main__':
-    # Example usage
-    data = fetch_data('AAPL')
-    df = sync_monthly_adjusted(data)
-    print(df.head())
+# if __name__ == '__main__':
+#     # Example usage
+#     data = fetch_data('AAPL')
+#     df = sync_monthly_adjusted(data)
+#     print(df.head())
