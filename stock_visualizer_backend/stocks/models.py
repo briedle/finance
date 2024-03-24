@@ -347,11 +347,11 @@ class GDPData(models.Model):
 
 class FFRData(models.Model):
     date = models.DateField(unique=True)
-    rate = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
+    value = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
 
     def __str__(self):
         try:
-            percent = 100 * self.rate
+            percent = 100 * self.value
         except TypeError:
             percent = 'Unknown'
         return f"{self.date}: {percent}%"
@@ -362,8 +362,88 @@ class FFRData(models.Model):
         ordering = ['-date']
 
 
+class CPIData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.DecimalField(max_digits=9, decimal_places=5)
+
+    class Meta:
+        verbose_name = "Consumer Price Index for All Urban Consumers (1982-1984=1)"
+        verbose_name_plural = "Consumer Price Index (1982-1984=1) Data"
+        get_latest_by = "date"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"CPI for {self.date}: {self.value}"
 
 
+
+class InflationData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.DecimalField(max_digits=9, decimal_places=5)  # Inflation values are percentages, stored as decimals
+
+    class Meta:
+        verbose_name = "Inflation Rate"
+        verbose_name_plural = "Inflation Rate Data"
+        ordering = ['-date']
+
+    def __str__(self):
+        try:
+            percent = 100 * self.rate
+        except TypeError:
+            percent = 'Unknown'
+        return f"{self.date}: {percent}%"
+
+class RetailSalesData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.BigIntegerField()  
+
+    class Meta:
+        verbose_name = "Retail Sales"
+        verbose_name_plural = "Retail Sales Data"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.date} - ${self.value}"
+
+class DurablesData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.BigIntegerField() 
+
+    class Meta:
+        verbose_name = "Durable Goods Orders"
+        verbose_name_plural = "Durable Goods Orders Data"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.date} - ${self.value}"
+
+class UnemploymentData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.DecimalField(max_digits=4, decimal_places=1)  
+
+    class Meta:
+        verbose_name = "Unemployment Rate"
+        verbose_name_plural = "Unemployment Rate Data"
+        ordering = ['-date']
+
+    def __str__(self):
+        try:
+            percent = 100 * self.rate
+        except TypeError:
+            percent = 'Unknown'
+        return f"{self.date}: {percent}%"
+
+class NonfarmPayrollData(models.Model):
+    date = models.DateField(unique=True)
+    value = models.IntegerField() 
+
+    class Meta:
+        verbose_name = "Nonfarm Payroll Total People Employed"
+        verbose_name_plural = "Nonfarm Payroll Total People Employed Data"
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.date} - {self.value}"
 
 
 

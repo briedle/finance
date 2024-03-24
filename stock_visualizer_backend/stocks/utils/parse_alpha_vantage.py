@@ -1,14 +1,17 @@
 import requests
 import time
 import datetime
-from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, FFRData
+from stocks.models import BaseStockData, MonthlyStockPriceData, IncomeStatementData, BalanceSheetData, EarningsData, CashFlowData, QuarterlyStockOverview, EarningsCalendarData, GDPData, FFRData, CPIData, InflationData, RetailSalesData, DurablesData, UnemploymentData, NonfarmPayrollData
 from django.conf import settings
 import logging
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, Type
 import re
 import csv
 from decimal import Decimal, InvalidOperation
 from django.db import transaction
+from django.db.models import Model
+
+logger = logging.getLogger(__name__)
 
 CURRENTLY_IMPLEMENTED_FUNCTIONS = [
     'TIME_SERIES_MONTHLY_ADJUSTED',
@@ -18,9 +21,6 @@ CURRENTLY_IMPLEMENTED_FUNCTIONS = [
     "CASH_FLOW",
     "EARNINGS",
 ]
-
-
-
 
 AV_SYMBOL_FUNCTIONS = [
     'TIME_SERIES_INTRADAY',
@@ -91,8 +91,41 @@ ECONOMIC_INDICATOR_FUNCTIONS = [
     'UNEMPLOYMENT',
     'NONFARM_PAYROLL',
 ]
-    
+
 # LEAVING OUT TECHNICAL INDICATORS FOR NOW
+
+# These are arguments to be passed to sync_data()
+ECONOMIC_INDICATORS_CONFIG = {
+    'FEDERAL_FUNDS_RATE': {
+        'model_class': FFRData,
+        'value_transform_func': lambda x: x / 100,  # Convert percentage to decimal
+        'interval': 'daily'
+    },
+    'CPI': {
+        'model_class': CPIData,
+        'value_transform_func': lambda x: x / 100,  # No transformation needed
+    },
+    'INFLATION': {
+        'model_class': InflationData,
+        'value_transform_func': lambda x: x / 100,  # Convert percentage to decimal
+    },
+    'RETAIL_SALES': {
+        'model_class': RetailSalesData,
+        'value_transform_func': lambda x: x * 1_000_000,  # Convert millions to absolute number
+    },
+    'DURABLES': {
+        'model_class': DurablesData,
+        'value_transform_func': lambda x: x * 1_000_000,  # Convert millions to absolute number
+    },
+    'UNEMPLOYMENT': {
+        'model_class': UnemploymentData,
+        'value_transform_func': lambda x: x / 100,  # Convert percentage to decimal
+    },
+    'NONFARM_PAYROLL': {
+        'model_class': NonfarmPayrollData,
+        'value_transform_func': lambda x: x * 1_000,  # Convert thousands to absolute number
+    },
+}
     
 
 def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Decimal]:
@@ -193,7 +226,6 @@ def camel_to_snake(name: Union[str, List[str]]) -> Union[str, List[str]]:
         return [convert(item) for item in name]
     else:
         raise TypeError("Input must be a string or a list of strings")
-
 
 
 def fetch_data(
@@ -802,30 +834,134 @@ def sync_gdp(interval: str, per_capita: bool, api_key: None | str = None):
                 )
 
 
-def sync_ffr(api_key: None | str = None):
+
+
+def sync_data(
+    function: str,
+    model_class: Type[Model], 
+    value_field_name: str = 'value', 
+    value_transform_func=lambda x: x,  
+    api_key: str = None,
+    **kwargs
+):
     """
-    Parses and stores the Effective Federal Funds Rate data.
+    Generalized function to synchronize various economic indicators with the local database.
 
     Parameters:
-    - data (dict): The API response data containing the Effective Federal Funds Rate.
+    - function (str): The function to use for fetching data.
+    - model_class (Type[Model]): The Django model class to which the data will be synced.
+    - value_field_name (str): The name of the field in the model where the value will be stored.
+    - value_transform_func (callable): A function to transform the value if necessary.
+    - api_key (str, optional): The API key for Alpha Vantage.
+    - **kwargs: Additional parameters to pass to the API.
     """
     if not api_key:
         api_key = settings.RAPIDAPI_KEY
-        # api_key = os.getenv("RAPIDAPI_KEY")
         if not api_key:
             raise ValueError('API key not provided')
+
+    try:
+        data = fetch_data(function=function, api_key=api_key, **kwargs)
+    except Exception as e:
+        raise ValueError(f"Failed to fetch data: {e}")
+
+    if 'data' not in data:
+        raise ValueError("The API response is missing the 'data' key.")
+
+    with transaction.atomic():
+        for item in data['data']:
+            date = safe_date(item['date'])
+            if date and item['value']:  # Ensure date and value are valid
+                value = value_transform_func(safe_decimal(item['value']))
+                model_class.objects.update_or_create(
+                    date=date,
+                    defaults={value_field_name: value}
+                )
+
+
+def sync_economic_indicators(data_sync_config: None | Dict[str, Dict] = None):
+    """
+    Synchronize economic indicators data based on the provided configuration.
+
+    This function iterates over a configuration dictionary, fetching and syncing data
+    for each economic indicator specified in the configuration. The configuration dictates
+    the model to sync to, any value transformation needed, and additional parameters.
+
+    Parameters:
+    - data_sync_config (Dict[str, Dict]): A dictionary where each key is the name of the function
+      corresponding to the economic indicator, and the value is a dictionary specifying the model,
+      value transformation function, and any additional parameters for the sync process.
+
+    The `data_sync_config` dictionary should have the following structure for each key:
+    {
+        'model_class': Type[Model],  # The Django model class to sync the data to.
+        'value_transform_func': Callable[[float], float],  # A function to transform the data value.
+        'interval': str,  # (Optional) Interval for the data fetching, e.g., 'monthly', 'annual'.
+    }
+
+    Example usage:
+    sync_economic_indicators(ECONOMIC_INDICATORS_CONFIG)
+
+    The function logs success and error messages during the synchronization process.
+    """
+    if data_sync_config is None:
+        data_sync_config = ECONOMIC_INDICATORS_CONFIG
+        
+    for function, config in data_sync_config.items():
+        try:
+            sync_data(
+                function=function,
+                model_class=config['model_class'],
+                value_transform_func=config.get('value_transform_func', lambda x: x),
+                interval=config.get('interval', None)  # Example of how you can pass additional kwargs
+            )
+            logger.info(f"Successfully synced data for {function}")
+        except ValueError as e:
+            logger.error(f"Error syncing data for {function}: {e}")
+
+
+# I don't think we are going to need this either
+# def sync_ffr(api_key: None | str = None):
+#     """
+#     Parses and stores the Effective Federal Funds Rate data.
+
+#     Parameters:
+#     - data (dict): The API response data containing the Effective Federal Funds Rate.
+#     """
+#     if not api_key:
+#         api_key = settings.RAPIDAPI_KEY
+#         # api_key = os.getenv("RAPIDAPI_KEY")
+#         if not api_key:
+#             raise ValueError('API key not provided')
     
-    function = 'FEDERAL_FUNDS_RATE'
-    data = fetch_data(function=function, api_key=api_key)
+#     function = 'FEDERAL_FUNDS_RATE'
+#     data = fetch_data(function=function, api_key=api_key, interval='daily')
 
-    for item in data.get('data', []):
-        date = safe_date(item.get('date'))
-        try: 
-            rate = safe_decimal(item.get('rate')) / 100
-        except TypeError:
-            rate = None
-        FFRData.objects.update_or_create(date=date, defaults={'rate': rate})
+#     for item in data.get('data', []):
+#         date = safe_date(item.get('date'))
+#         try: 
+#             value = safe_decimal(item.get('rate')) / 100
+#         except TypeError:
+#             value = None
+#         FFRData.objects.update_or_create(date=date, defaults={'value': value})
 
+# I don't think we are going to need this -- we can hopefully instead simply use sync_data()
+# def sync_cpi_data(data: dict):
+#     """
+#     Syncs the Consumer Price Index data with the local database.
+
+#     Parameters:
+#     - data (dict): The CPI data including the name, interval, unit, and actual data points.
+#     """
+
+#     with transaction.atomic():
+#         for item in data['data']:
+#             date = datetime.strptime(item['date'], '%Y-%m-%d').date()
+#             value = Decimal(item['value'])
+#             CPIData.objects.update_or_create(
+#                 date=date,
+#                 defaults={'value': value}
+#             )
 
 
 # def fetch_data(
