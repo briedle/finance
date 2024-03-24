@@ -3,7 +3,7 @@
 import logging
 from django.shortcuts import render
 from django.http import JsonResponse
-from .models import BaseStockData, MonthlyStockPriceData  # Assuming you have a model for storing stock data
+from .models import BaseStockData, StockPriceData #MonthlyStockPriceData  # Assuming you have a model for storing stock data
 
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,8 @@ def get_symbols(request):
 def get_time_series(request, symbol):
     logger.info("Request hit get_time_series")
     stock_data = (
-        MonthlyStockPriceData
+        # MonthlyStockPriceData
+        StockPriceData
         .objects
         .filter(stock__symbol=symbol)
         .values(

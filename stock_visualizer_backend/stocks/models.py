@@ -93,26 +93,57 @@ class QuarterlyStockOverview(models.Model):
         return f"{self.stock.symbol} ({self.quarter_end_date})"
 
 
-class MonthlyStockPriceData(models.Model):
+class StockPriceData(models.Model):
+    INTERVAL_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+    ]
+
     stock = models.ForeignKey(
         BaseStockData,
         on_delete=models.CASCADE,
-        related_name='monthly_price_data',
+        related_name='price_data',
         null=True,
-        )
+    )
     date = models.DateField()
+    interval = models.CharField(max_length=7, choices=INTERVAL_CHOICES, default='monthly')
     open = models.DecimalField(max_digits=10, decimal_places=2)
     high = models.DecimalField(max_digits=10, decimal_places=2)
     low = models.DecimalField(max_digits=10, decimal_places=2)
     close = models.DecimalField(max_digits=10, decimal_places=2)
     adj_close = models.DecimalField(max_digits=10, decimal_places=2)
     volume = models.BigIntegerField()
-    dividend = models.DecimalField(max_digits=10, decimal_places=2)  
+    dividend = models.DecimalField(max_digits=10, decimal_places=2)
+    split_coefficient = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
     class Meta:
-        unique_together = ('stock', 'date')
+        unique_together = ('stock', 'date', 'interval')
 
     def __str__(self):
-        return f"{self.stock.symbol} - {self.date}"
+        return f"{self.stock.symbol} - {self.date} ({self.interval})"
+
+
+# class MonthlyStockPriceData(models.Model):
+#     stock = models.ForeignKey(
+#         BaseStockData,
+#         on_delete=models.CASCADE,
+#         related_name='monthly_price_data',
+#         null=True,
+#         )
+#     date = models.DateField()
+#     open = models.DecimalField(max_digits=10, decimal_places=2)
+#     high = models.DecimalField(max_digits=10, decimal_places=2)
+#     low = models.DecimalField(max_digits=10, decimal_places=2)
+#     close = models.DecimalField(max_digits=10, decimal_places=2)
+#     adj_close = models.DecimalField(max_digits=10, decimal_places=2)
+#     volume = models.BigIntegerField()
+#     dividend = models.DecimalField(max_digits=10, decimal_places=2)  
+#     class Meta:
+#         unique_together = ('stock', 'date')
+
+#     def __str__(self):
+#         return f"{self.stock.symbol} - {self.date}"
 
 
 # We are going to use this metaclass to construct the IncomeStatementData and BalanceSheetData classes
