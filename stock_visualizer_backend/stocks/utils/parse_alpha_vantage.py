@@ -263,6 +263,9 @@ def fetch_data(
     Raises:
     - ValueError: If the API request fails after the maximum number of retries.
     """
+    # Filter out None values from kwargs, to allow for safe passing of them
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    
     url = "https://alpha-vantage.p.rapidapi.com/query"
     if stock_symbol:
         querystring = {"symbol": stock_symbol, "function": function, "datatype": "json", **kwargs}
@@ -643,7 +646,7 @@ def sync_earnings(data: Dict) -> None:
 
     # Process annual earnings
     for annual_earning in data.get('annualEarnings', []):
-        date = datetime.datetime.strptime(annual_earning['fiscalDateEnding'], '%Y-%m-%d').date()
+        fiscal_date_ending = datetime.datetime.strptime(annual_earning['fiscalDateEnding'], '%Y-%m-%d').date()
         defaults = {
             'reported_eps': safe_decimal(annual_earning.get('reportedEPS')),
         }
@@ -651,13 +654,20 @@ def sync_earnings(data: Dict) -> None:
         EarningsData.objects.update_or_create(
             stock=base_stock,
             report_type='annual',
-            date=date,
+            fiscal_date_ending=fiscal_date_ending,
             defaults=defaults
         )
 
     # Process quarterly earnings
     for quarterly_earning in data.get('quarterlyEarnings', []):
-        date = datetime.datetime.strptime(quarterly_earning['fiscalDateEnding'], '%Y-%m-%d').date()
+        fiscal_date_ending = (
+            datetime.datetime.strptime(
+                quarterly_earning['fiscalDateEnding'], '%Y-%m-%d').date()
+        )
+        reported_date = (
+            datetime.datetime.strptime(
+                quarterly_earning['reportedDate'], '%Y-%m-%d').date()
+        )
         defaults = {
             'reported_eps': safe_decimal(quarterly_earning.get('reportedEPS')),
             'estimated_eps': safe_decimal(quarterly_earning.get('estimatedEPS')),
@@ -668,7 +678,8 @@ def sync_earnings(data: Dict) -> None:
         EarningsData.objects.update_or_create(
             stock=base_stock,
             report_type='quarterly',
-            date=date,
+            fiscal_date_ending=fiscal_date_ending,
+            reported_date=reported_date,
             defaults=defaults
         )
 

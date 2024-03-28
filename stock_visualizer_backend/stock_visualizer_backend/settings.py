@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django_extensions',  # for shell_plus
     'corsheaders',
+    # 'rest_framework',
     'stocks',
     'storages',
 ]

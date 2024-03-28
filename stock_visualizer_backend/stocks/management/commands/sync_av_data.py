@@ -4,6 +4,7 @@ from stocks.models import BaseStockData, StockPriceData, IncomeStatementData, Ba
 from django.conf import settings
 import logging
 import functools
+import json
 
 class Command(BaseCommand):
     help = 'Fetches stock data for a set of stocks based on the provided function and checks for existing data if specified.'
@@ -29,6 +30,13 @@ class Command(BaseCommand):
         'EARNINGS': EarningsData,
         # Not adding 'OVERVIEW' here
     }
+    
+    # functions that have be treated differently in some 
+    ts_function_intervals = {
+        'TIME_SERIES_DAILY_ADJUSTED': 'daily',
+        'TIME_SERIES_WEEKLY_ADJUSTED': 'weekly',
+        'TIME_SERIES_MONTHLY_ADJUSTED': 'monthly',
+    }
 
     def add_arguments(self, parser):
         parser.add_argument('function', type=str, help='The function to fetch data for')
@@ -40,7 +48,14 @@ class Command(BaseCommand):
             dest='check_exists', 
             help='Do not check if the data already exists in the database'
         )
+        parser.add_argument('--outputsize', type=str, help='Specify the output size')
         parser.add_argument('--include-all', action='store_true', help='Include all stocks, not just S&P 500')
+        # parser.add_argument(
+        #     '--extra-args', 
+        #     type=str, 
+        #     help='JSON string of extra keyword arguments', 
+        #     default='{}'
+        # )
 
     def handle(self, *args, **options):
         function = options['function'].upper()
@@ -48,11 +63,16 @@ class Command(BaseCommand):
         stop_index = options['stop_index']
         check_exists = options['check_exists']
         include_all = options['include_all']
+        outputsize = options.get('outputsize', None)
+        # extra_args = json.loads(options.get('extra-args', '{}'))
+        # print("Extra args:", extra_args)  # Debugging line
 
         if include_all:
             stocks_to_iterate = BaseStockData.objects.all()
         else:
             stocks_to_iterate = BaseStockData.objects.filter(is_sp500=True)
+            
+        interval = self.ts_function_intervals.get(function)
 
         stocks_to_iterate = stocks_to_iterate.order_by('symbol')[start_index:stop_index]
 
@@ -60,25 +80,43 @@ class Command(BaseCommand):
         model_class = self.function_to_model.get(function)  
 
         if not sync_func:
-            self.stdout.write(f"No syncing function found for {function}. Please check your mappings.")
+            logging.error(f"No syncing function found for {function}. Please check your mappings.")
             return
-
+          
         for stock in stocks_to_iterate:
-            if check_exists and function != 'OVERVIEW':
-                exists = model_class.objects.filter(stock=stock).exists()   
-                if exists:
-                    self.stdout.write(f"Data for {stock.symbol} already exists. Skipping API call.")
-                    continue
-
-            # Custom check for OVERVIEW since it involves two models
-            if check_exists and function == 'OVERVIEW':
-                overview_exists = QuarterlyStockOverview.objects.filter(stock=stock).exists()
-                if overview_exists:
-                    self.stdout.write(f"Quarterly overview data for {stock.symbol} already exists. Skipping API call.")
-                    continue
+            if check_exists and function not in ['OVERVIEW'] + list(self.ts_function_intervals.keys()):
+                exists = model_class.objects.filter(stock=stock).exists()
+            elif check_exists and function == 'OVERVIEW':
+                exists = QuarterlyStockOverview.objects.filter(stock=stock).exists()
+            elif check_exists and interval:
+                exists = (
+                    model_class.objects.
+                    filter(stock=stock, interval=interval)
+                    .exists()
+                )
+            else:
+                exists = False
+                      
+            if exists:
+                self.stdout.write(f"Data for {stock.symbol} already exists. Skipping API call.")
+                continue
 
             try:
-                data = pav.fetch_data(function=function, stock_symbol=stock.symbol, api_key=settings.RAPIDAPI_KEY)
+                if interval:
+                    data = pav.fetch_data(
+                        function=function, 
+                        stock_symbol=stock.symbol, 
+                        api_key=settings.RAPIDAPI_KEY, 
+                        interval=interval,
+                        outputsize=outputsize
+                    )
+                else:
+                    data = pav.fetch_data(
+                        function=function, 
+                        stock_symbol=stock.symbol, 
+                        api_key=settings.RAPIDAPI_KEY,
+                        outputsize=outputsize
+                    )
             except Exception as e:
                 logging.error(f"Error fetching data for {stock.symbol}: {e}")
                 continue

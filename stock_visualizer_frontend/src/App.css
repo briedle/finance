@@ -36,3 +36,32 @@
     transform: rotate(360deg);
   }
 }
+
+.selector-container {
+  position: fixed; 
+  top: 1000px;
+  z-index: 10;
+}
+
+.plot-container {
+  margin-top: 50px; 
+}
+
+
+.grid-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 10px;
+}
+
+.grid-table div {
+  border: 1px solid #ccc;
+  padding: 10px;
+  text-align: center;
+}
+
+.header {
+  background-color: #f1f1f1;
+  font-weight: bold;
+}

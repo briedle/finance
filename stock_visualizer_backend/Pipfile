@@ -18,6 +18,8 @@ django-cors-headers = "*"
 django-storages = "*"
 asgiref = "*"
 pysupport = {file = "../pysupport", editable = true}
+apache-airflow = "*"
+djangorestframework = "*"
 
 [dev-packages]
 

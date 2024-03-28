@@ -317,22 +317,20 @@ class EarningsData(models.Model, metaclass=FinancialDataMeta):
         null=True,
     )
     report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
-    date = models.DateField()
+    fiscal_date_ending = models.DateField()
     reported_date = models.DateField(null=True, blank=True)  # Only for quarterly data
-    reported_eps = StockIntegerField()
-    estimated_eps = StockIntegerField(null=True, blank=True)  # Only for quarterly data
-    surprise = StockIntegerField(null=True, blank=True)  # Only for quarterly data
-    surprise_percentage = StockIntegerField(null=True, blank=True)  # Only for quarterly data
-
-    financial_fields = [
-        'reported_eps',
-        'estimated_eps',
-        'surprise',
-        'surprise_percentage',
-    ]
-
+    reported_eps = models.DecimalField(max_digits=11, decimal_places=4, null=True, blank=True)
+    estimated_eps = models.DecimalField(max_digits=11, decimal_places=4, null=True, blank=True)  # Only for quarterly data
+    surprise = models.DecimalField(max_digits=11, decimal_places=4, null=True, blank=True)  # Only for quarterly data
+    surprise_percentage = models.DecimalField(max_digits=11, decimal_places=4, null=True, blank=True)  # Only for quarterly data
+    # financial_fields = [
+    #     'reported_eps',
+    #     'estimated_eps',
+    #     'surprise',
+    #     'surprise_percentage',
+    # ]
     class Meta:
-        unique_together = ('stock', 'report_type', 'date', 'reported_date')
+        unique_together = ('stock', 'report_type', 'fiscal_date_ending', 'reported_date')
 
 
 class EarningsCalendarData(models.Model):
@@ -492,127 +490,3 @@ class NonfarmPayrollData(models.Model):
     def __str__(self):
         return f"{self.date} - {self.value}"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class IncomeStatementData(models.Model):
-#     REPORT_TYPE_CHOICES = [
-#         ('annual', 'Annual'),
-#         ('quarterly', 'Quarterly'),
-#     ]
-#     stock = models.ForeignKey(
-#         BaseStockData,
-#         on_delete=models.CASCADE,
-#         related_name='income_statement_data',
-#         null=True,
-#         )
-#     report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
-#     date = models.DateField()
-
-#     # Set null=True and blank=True for fields that can accept NULL values
-#     gross_profit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     total_revenue = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     cost_of_revenue = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     cogs = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     operating_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     net_investment_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     net_interest_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     interest_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     interest_expense = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     non_interest_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     other_non_operating_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     depreciation = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     depreciation_amortization = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     income_before_tax = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     income_tax_expense = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     interest_and_debt_expense = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     net_income_from_continuing_operations = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     comprehensive_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     ebit = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     ebitda = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-#     net_income = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
-
-#     class Meta:
-#         unique_together = ('stock', 'report_type', 'date')
-
-#     def __str__(self):
-#         return f"{self.symbol} - {self.date} - {self.report_type}"
-
-
-# class BalanceSheetDataMeta(type(models.Model)):
-#     def __new__(cls, name, bases, attrs):
-#         balance_sheet_fields = [
-#             'total_assets',
-#             'total_current_assets',
-#             'cash_and_cash_equivalents_at_carrying_value',
-#             'cash_and_short_term_investments',
-#             'inventory',
-#             'current_net_receivables',
-#             'total_non_current_assets',
-#             'property_plant_equipment',
-#             'accumulated_depreciation_amortization_ppe',
-#             'intangible_assets',
-#             'intangible_assets_excluding_goodwill',
-#             'goodwill',
-#             'investments',
-#             'long_term_investments',
-#             'short_term_investments',
-#             'other_current_assets',
-#             'other_non_current_assets',
-#             'total_liabilities',
-#             'total_current_liabilities',
-#             'current_accounts_payable',
-#             'deferred_revenue',
-#             'current_debt',
-#             'short_term_debt',
-#             'total_non_current_liabilities',
-#             'capital_lease_obligations',
-#             'long_term_debt',
-#             'current_long_term_debt',
-#             'long_term_debt_noncurrent',
-#             'short_long_term_debt_total',
-#             'other_current_liabilities',
-#             'other_non_current_liabilities',
-#             'total_shareholder_equity',
-#             'treasury_stock',
-#             'retained_earnings',
-#             'common_stock',
-#             'common_stock_shares_outstanding'
-#         ]
-            
-#         for field_name in balance_sheet_fields:
-#             attrs[field_name] = StockIntegerField()
-
-#         return super().__new__(cls, name, bases, attrs)
-    
-    
-# class BalanceSheetData(models.Model):
-#     REPORT_TYPE_CHOICES = [
-#         ('annual', 'Annual'),
-#         ('quarterly', 'Quarterly'),
-#     ]
-#     stock = models.ForeignKey(
-#         BaseStockData,
-#         on_delete=models.CASCADE,
-#         related_name='balance_sheet_data',
-#         null=True,
-#         )
-#     report_type = models.CharField(max_length=9, choices=REPORT_TYPE_CHOICES)
-#     date = models.DateField()
-        
-#     class Meta:
-#         unique_together = ('stock', 'report_type', 'date')
-
-#     def __str__(self):
-#         return f"{self.symbol} - {self.date} - {self.report_type}"
