@@ -7,9 +7,9 @@ from . import views
 urlpatterns = [
     path('', views.index, name='index'),
     path('symbols/', views.get_symbols, name='get_symbols'),
-    path('adjusted_stock_price_ts/<str:symbol>/',
-         views.get_adjusted_stock_price_ts, 
-         name='get_adjusted_stock_price_ts'
+    path('adjusted_stock_price/<str:symbol>/',
+         views.get_adjusted_stock_price, 
+         name='get_adjusted_stock_price'
     ),
     path('earnings/<str:symbol>/',
          views.get_earnings, 
@@ -20,4 +20,19 @@ urlpatterns = [
          views.get_quarterly_overview,
          name='get_quarterly_overview'
     ),
+    path(
+         'balance_sheet/<str:symbol>/',
+         views.get_balance_sheet,
+           name='get_balance_sheet'
+     ),
+     path(
+           'income_statement/<str:symbol>/',
+           views.get_income_statement,
+           name='get_income_statement'
+     ),
+     path(
+          'cash_flow/<str:symbol>/',
+          views.get_cash_flow,
+          name='get_cash_flow'
+     ),
 ]

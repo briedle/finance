@@ -27,6 +27,9 @@ from django.core import serializers
 #         # return Response(serializer.data)
 logger = logging.getLogger(__name__)
 
+def index(request):
+    logger.info("Request hit index")
+    return JsonResponse({'status': 'ok'})
 
 def stock_list_view(request):
     # Assuming you want a unique list based on 'symbol'
@@ -43,8 +46,6 @@ def stock_list_view(request):
     return JsonResponse(stocks_list, safe=False)
 
 
-
-
 def get_symbols(request):
     logger.info("Request hit get_symbols")
     symbols = (
@@ -58,7 +59,7 @@ def get_symbols(request):
     return JsonResponse(list(symbols), safe=False)
     # return JsonResponse({'status': 'ok'})
 
-def get_adjusted_stock_price_ts(request, symbol):
+def get_adjusted_stock_price(request, symbol):
     logger.info("Request hit get_time_series")
     stock_data = (
         # MonthlyStockPriceData
@@ -109,7 +110,39 @@ def get_earnings(request, symbol):
     )
     return JsonResponse(list(stock_data), safe=False)
 
-def index(request):
-    logger.info("Request hit index")
-    return JsonResponse({'status': 'ok'})
 
+def get_balance_sheet(request, symbol):
+    stock_data = (
+        models.BalanceSheetData
+        .objects
+        .filter(stock__symbol=symbol,
+                report_type='quarterly')
+      .values()
+      .order_by('date')
+    )
+    return JsonResponse(list(stock_data), safe=False)
+
+
+def get_income_statement(request, symbol):
+    stock_data = (
+        models.IncomeStatementData
+        .objects
+        .filter(stock__symbol=symbol,
+                report_type='quarterly')
+        .values()
+        .order_by('date')
+    )
+    return JsonResponse(list(stock_data), safe=False)
+
+
+def get_cash_flow(request, symbol):
+    logger.info("Request hit get_cash_flow")
+    stock_data = (
+        models.CashFlowData
+        .objects
+        .filter(stock__symbol=symbol,
+                report_type='quarterly')
+        .values()
+        .order_by('date')
+    )
+    return JsonResponse(list(stock_data), safe=False)
