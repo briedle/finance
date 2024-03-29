@@ -1,38 +1,31 @@
-export default function App() {
-  // State and custom hook calls remain the same
+// Pseudocode for a new website layout.
+// In your main App component
 
+{selectedSymbol && (
+  <>
+    <CompanyProfileCard companyData={companyData[selectedSymbol]} />
+    <KeyFinancialMetricsBarChart companyData={companyData[selectedSymbol]} />
+    <FinancialRatiosGauges companyData={companyData[selectedSymbol]} />
+    <SectorIndustryAnalysis selectedSymbols={selectedSymbols} />
+    <FinancialDataTables companyData={companyData[selectedSymbol]} />
+    <ComparisonCharts selectedSymbols={selectedSymbols} />
+  </>
+)}
 
-
+// Example structure for CompanyProfileCard component
+function CompanyProfileCard({ companyData }) {
   return (
-    <Container>
-      <Row className="justify-content-md-center">
-        <Col>
-          <h1 className="text-center mb-4">Stock Visualizer</h1>
-          <StockSelector onSelect={setSelectedSymbol} />
-          {selectedSymbol && (
-            <>
-              <Row>
-                <Col md={6}>
-                  <AdjustedStockPricePlot symbol={selectedSymbol} />
-                </Col>
-                <Col md={6}>
-                  <EarningsPerSharePlot symbol={selectedSymbol} />
-                </Col>
-              </Row>
-              <Row>
-                <AnalystRatingTable selectedSymbols={[selectedSymbol]} />
-                <FinancialPerformanceTable selectedSymbol={selectedSymbol} />
-                <BalanceSheetMetricsSelector onSelect={setSelectedBalanceSheetMetrics} />
-                {balanceSheetComponent}
-                <IncomeStatementMetricsSelector onSelect={setSelectedIncomeStatementMetrics} />
-                {incomeStatementComponent}
-                <CashFlowMetricsSelector onSelect={setSelectedCashFlowMetrics} />
-                {cashFlowComponent}
-              </Row>
-            </>
-          )}
-        </Col>
-      </Row>
-    </Container>
+    <Card>
+      <Card.Header>{companyData.Name} ({companyData.Symbol})</Card.Header>
+      <Card.Body>
+        <Card.Title>{companyData.Industry}</Card.Title>
+        <Card.Text>
+          {companyData.Description}
+        </Card.Text>
+        {/* Additional company info */}
+      </Card.Body>
+    </Card>
   );
 }
+
+// You can create similar structures for other components.

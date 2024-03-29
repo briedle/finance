@@ -119,16 +119,20 @@ export default function App() {
           <StockSelector onSelect={setSelectedSymbol} />
           {selectedSymbol && (
             <>
-            <Row>
-              <Col md={6}>
-                <AdjustedStockPricePlot symbol={selectedSymbol} />
-              </Col>
-              <Col md={6}>
-                <EarningsPerSharePlot symbol={selectedSymbol} />
-              </Col>
+              <Row>
+                <Col md={6}>
+                  <AdjustedStockPricePlot symbol={selectedSymbol} />
+                </Col>
+                <Col md={6}>
+                  <EarningsPerSharePlot symbol={selectedSymbol} />
+                </Col>
               </Row>
               <Row>
-                <AnalystRatingTable selectedSymbols={[selectedSymbol]} />
+                <Col md={6}>
+                  <AnalystRatingBarChart selectedSymbols={[selectedSymbol]} />
+                </Col>
+              </Row>
+              <Row>
                 <FinancialPerformanceTable selectedSymbol={selectedSymbol} />
                 {balanceSheetSelector}
                 {balanceSheetPlot}
@@ -136,8 +140,8 @@ export default function App() {
                 {incomeStatementPlot}
                 {cashFlowSelector}
                 {cashFlowPlot}
-                </Row>
-          </>
+              </Row>
+            </>
           )}
         </Col>
       </Row>
@@ -237,14 +241,26 @@ function StockSelector({ onSelect }) {
 
 
 // ADJUSTED STOCK PRICE PLOT ----------------------------------------------------------------------------
+
 function AdjustedStockPricePlot({ symbol }) {
   const [timeSeries, setTimeSeries] = useState([]);
+  const [analystTargetPrice, setAnalystTargetPrice] = useState(null);
 
   useEffect(() => {
     if (symbol) {
+      // Fetch the adjusted stock price time series data
       fetch(`${process.env.REACT_APP_API_URL}/adjusted_stock_price/${symbol}/`)
         .then(response => response.json())
         .then(data => setTimeSeries(data));
+
+      // Fetch the latest analyst target price
+      fetch(`${process.env.REACT_APP_API_URL}/quarterly_overview/${symbol}/`)
+        .then(response => response.json())
+        .then(data => {
+          if (data && data.length > 0) {
+            setAnalystTargetPrice(formatValue(data[0].analyst_target_price));
+          }
+        });
     }
   }, [symbol]);
 
@@ -257,6 +273,48 @@ function AdjustedStockPricePlot({ symbol }) {
       t: '5%',
     },
     title: `Adjusted Stock Price for ${symbol}`,
+    yaxis: {
+      tickformat: '$.2f',
+    },
+    // Add the annotation for the analyst target price
+    annotations: analystTargetPrice ? [
+      {
+        x: 1,
+        y: analystTargetPrice,
+        xref: 'paper',
+        yref: 'y',
+        text: `Analyst Target: ${formatValue(analystTargetPrice, 'currency')}`,
+        showarrow: true,
+        arrowhead: 0,
+        ax: 0,
+        ay: -40, // Adjust this value to move the annotation up or down relative to the line
+        bgcolor: 'rgba(255,255,255,0.9)',
+        bordercolor: 'red',
+        borderwidth: 2,
+        borderpad: 4,
+        font: {
+          size: 12,
+          color: 'red',
+        },
+      }
+    ] : [],
+    // Add the horizontal line for the analyst target price
+    shapes: analystTargetPrice ? [
+      {
+        type: 'line',
+        x0: 0,
+        y0: analystTargetPrice,
+        x1: 1,
+        y1: analystTargetPrice,
+        xref: 'paper',
+        yref: 'y',
+        line: {
+          color: 'red',
+          width: 2,
+          dash: 'dot',
+        }
+      }
+    ] : [],
   };
 
   return (
@@ -282,34 +340,109 @@ function AdjustedStockPricePlot({ symbol }) {
 }
 
 
+
+
+
+
+
+// function AdjustedStockPricePlot({ symbol }) {
+//   const [timeSeries, setTimeSeries] = useState([]);
+
+//   useEffect(() => {
+//     if (symbol) {
+//       fetch(`${process.env.REACT_APP_API_URL}/adjusted_stock_price/${symbol}/`)
+//         .then(response => response.json())
+//         .then(data => setTimeSeries(data));
+//     }
+//   }, [symbol]);
+
+//   const layout = {
+//     autosize: true,
+//     margin: {
+//       l: '5%',
+//       r: '5%',
+//       b: '5%',
+//       t: '5%',
+//     },
+//     title: `Adjusted Stock Price for ${symbol}`,
+//   };
+
+//   return (
+//     <Card>
+//       <Card.Body>
+//         <Plot
+//           data={[
+//             {
+//               x: timeSeries.map(entry => entry.date),
+//               y: timeSeries.map(entry => entry.adj_close),
+//               type: 'scatter',
+//               mode: 'lines+markers',
+//               marker: { color: 'green' },
+//             },
+//           ]}
+//           layout={layout}
+//           useResizeHandler={true}
+//           style={{ width: "100%", height: "100%" }}
+//         />
+//       </Card.Body>
+//     </Card>
+//   );
+// }
+
+
 // EARNINGS PER SHARE PLOT ----------------------------------------------------------------------------
 const EarningsPerSharePlot = ({ symbol }) => {
   const [epsData, setEpsData] = useState([]);
+  const [epsEstimates, setEpsEstimates] = useState([]);
 
   useEffect(() => {
     if (symbol) {
+      // Fetch historical EPS data
       fetch(`${process.env.REACT_APP_API_URL}/earnings/${symbol}/`)
         .then(response => response.json())
         .then(data => setEpsData(data));
+
+      // Fetch future EPS estimates
+      fetch(`${process.env.REACT_APP_API_URL}/earnings_calendar/${symbol}/`)
+        .then(response => response.json())
+        .then(data => setEpsEstimates(data));
     }
   }, [symbol]);
 
+  // Find the earliest fiscal_date_ending in the future EPS estimates
+  const latestObservedDate = Math.max(...epsData.map(est => new Date(est.fiscal_date_ending)));
+
   const epsPlotData = [
+    // Historical EPS data
     {
       x: epsData.map(entry => entry.fiscal_date_ending),
       y: epsData.map(entry => entry.reported_eps),
       type: 'scatter',
       mode: 'lines+markers',
-      name: 'EPS',
+      name: 'Historical EPS',
       yaxis: 'y1',
+      line: { color: 'blue', width: 3 },
     },
+    // Historical Surprise %
     {
       x: epsData.map(entry => entry.fiscal_date_ending),
-      y: epsData.map(entry => (entry.surprise_percentage)),
+      y: epsData.map(entry => entry.surprise_percentage),
       type: 'bar',
       name: 'Surprise %',
       yaxis: 'y2',
+      marker: { color: 'orange' },
     },
+    // Future EPS estimates
+    {
+      x: epsEstimates.map(entry => entry.fiscal_date_ending),
+      y: epsEstimates.map(entry => entry.estimate),
+      type: 'scatter',
+      mode: 'lines+markers',
+      name: 'EPS Estimates',
+      yaxis: 'y1',
+      line: { color: 'green', dash: 'dot' }, // Dashed line for estimates
+      marker: { symbol: 'diamond' }, // Diamond shape for estimate markers
+    }
   ];
 
   const layout = {
@@ -320,8 +453,31 @@ const EarningsPerSharePlot = ({ symbol }) => {
       b: '5%',
       t: '5%',
     },
-    title: `EPS Metrics for ${symbol}`,
+    shapes: [
+      // Add a line to demarcate past and future data
+      {
+        type: 'line',
+        x0: latestObservedDate,
+        y0: 0,
+        x1: latestObservedDate,
+        y1: 1,
+        xref: 'x',
+        yref: 'paper',
+        line: {
+          color: 'grey',
+          width: 2,
+          dash: 'dot'
+        }
+      }
+    ],
+    title: `EPS and Future Estimates for ${symbol}`,
     showlegend: false,
+    legend: {
+      x: 0.5,
+      y: 1.2,
+      xanchor: 'center',
+      orientation: 'h'
+    },
     yaxis: { // First y-axis configuration (left)
       title: 'Reported EPS ($)',
       titlefont: {color: '#1f77b4'},
@@ -352,8 +508,8 @@ const EarningsPerSharePlot = ({ symbol }) => {
 
 
 // ANALYST RATING TABLE ----------------------------------------------------------------------------
-const AnalystRatingTable = ({ selectedSymbols }) => {
-  const [quarterlyData, setQuarterlyData] = useState([]);
+const AnalystRatingBarChart = ({ selectedSymbols }) => {
+  const [ratingsData, setRatingsData] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -363,52 +519,68 @@ const AnalystRatingTable = ({ selectedSymbols }) => {
             .then(response => response.json())
         );
         const responses = await Promise.all(dataPromises);
-        const data = responses.flat(); // Flattening array of arrays if necessary
-        setQuarterlyData(data);
+        const data = responses.flat(); // Flatten array of arrays
+        setRatingsData(data);
       } catch (error) {
-        console.error('Failed to fetch quarterly data', error);
+        console.error('Failed to fetch analyst ratings data', error);
       }
     };
 
-    fetchData();
+    if (selectedSymbols && selectedSymbols.length > 0) {
+      fetchData();
+    }
   }, [selectedSymbols]);
 
-  const columns = [
-    { label: 'Name', accessor: 'stock__name' },
-    { label: 'Ticker', accessor: 'stock__symbol' },
-    { label: 'Analyst Target Price', accessor: 'analyst_target_price', type: 'currency'},
-    { label: 'Analyst Rating Strong Buy', accessor: 'analyst_rating_strong_buy' },
-    { label: 'Analyst Rating Buy', accessor: 'analyst_rating_buy' },
-    { label: 'Analyst Rating Hold', accessor: 'analyst_rating_hold' },
-    { label: 'Analyst Rating Sell', accessor: 'analyst_rating_sell' },
-    { label: 'Analyst Rating Strong Sell', accessor: 'analyst_rating_strong_sell' },
-    // You can add more columns here based on your model fields
-  ];
+  // Assuming each rating scale is an average or sum of ratings from multiple analysts
+  const barChartData = ratingsData.map(item => ({
+    x: ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell'],
+    y: [
+      item.analyst_rating_strong_buy,
+      item.analyst_rating_buy,
+      item.analyst_rating_hold,
+      item.analyst_rating_sell,
+      item.analyst_rating_strong_sell,
+    ],
+    type: 'bar',
+    name: item.stock__symbol
+  }));
+
+  const layout = {
+    title: 'Analyst Ratings',
+    barmode: 'group',
+    xaxis: {
+      title: 'Ratings',
+    },
+    yaxis: {
+      title: 'Count',
+    },
+    autosize: true,
+    margin: {
+      l: 50,
+      r: 50,
+      b: 100,
+      t: 100,
+      pad: 4
+    },
+  };
 
   return (
-    <Table striped bordered hover responsive>
-      <thead>
-        <tr>
-          {columns.map(column => (
-            <th key={column.accessor}>{column.label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {quarterlyData.map((item, index) => (
-          <tr key={index}>
-            {columns.map(column => (
-              <td key={column.accessor}>
-                {formatValue(item[column.accessor], column.type)}
-              </td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </Table>
+    <Card>
+      <Card.Body>
+        {ratingsData.length > 0 ? (
+          <Plot
+            data={barChartData}
+            layout={layout}
+            useResizeHandler={true}
+            style={{ width: "100%", height: "400px" }}
+          />
+        ) : (
+          <div>Loading...</div>
+        )}
+      </Card.Body>
+    </Card>
   );
 };
-
 
 
 // FINANCIAL PERFORMANCE TABLE ----------------------------------------------------------------------------
