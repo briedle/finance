@@ -153,8 +153,13 @@ def safe_decimal(value: str, default: Optional[Decimal] = None) -> Optional[Deci
         return default
     try:
         return Decimal(value.strip())
-    except (InvalidOperation, TypeError, ValueError):
-        logging.error(f"Invalid decimal value: {value}")
+    except Exception as e:
+        # Log the exception if it's not a KeyboardInterrupt or SystemExit
+        if not isinstance(e, (KeyboardInterrupt, SystemExit)):
+            logging.error(f"Exception in converting to decimal: {e} for value: {value}")
+        # Re-raise the exception if it's KeyboardInterrupt or SystemExit to allow the program to be interrupted or exit gracefully
+        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+            raise
         return default
 
 
@@ -784,7 +789,7 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
         horizon (str): The horizon parameter for the API call, e.g., "3month".
     """
     CSV_URL = f'https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon={horizon}&apikey={api_key}'
-    current_date = datetime.date.today()
+    # current_date = datetime.date.today()
 
     with requests.Session() as s:
         download = s.get(CSV_URL)
@@ -796,7 +801,9 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
         with transaction.atomic():
             for row in cr:
                 symbol, name, report_date, fiscal_date_ending, estimate, currency = row
-
+                
+                
+                estimate = safe_decimal(estimate)
                 # Skip rows where the estimate is missing
                 if not estimate:
                     continue
@@ -809,15 +816,14 @@ def sync_earnings_calendar(api_key: str = 'demo', horizon: str = '3month'):
 
                 # Create or update EarningsCalendarData
                 horizon_months = int(horizon.replace('month', ''))
-                estimate_decimal = safe_decimal(estimate)
                 EarningsCalendarData.objects.update_or_create(
                     stock=stock,
-                    current_date=current_date,
-                    report_date=datetime.datetime.strptime(report_date, '%Y-%m-%d').date(),
+                    # current_date=current_date,
+                    report_date=safe_date(report_date),
                     defaults={
                         'horizon_months': horizon_months,
-                        'fiscal_date_ending': datetime.datetime.strptime(fiscal_date_ending, '%Y-%m-%d').date(),
-                        'estimate': estimate_decimal,
+                        'fiscal_date_ending': safe_date(fiscal_date_ending),
+                        'estimate': estimate,
                     }
                 )
 

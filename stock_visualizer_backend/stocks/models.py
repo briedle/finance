@@ -340,17 +340,17 @@ class EarningsCalendarData(models.Model):
         related_name='earnings_calendar_data',
         null=True,
     )
-    current_date = models.DateField()
-    horizon_months = models.IntegerField()
-    report_date = models.DateField()
-    fiscal_date_ending = models.DateField()
+    # current_date = models.DateField()
+    # horizon_months = models.IntegerField()
+    report_date = models.DateField(blank=True, null=True)
+    fiscal_date_ending = models.DateField(blank=True, null=True)
     estimate = models.DecimalField(max_digits=10, decimal_places=3)
 
     def __str__(self):
-        return f"{self.name} ({self.symbol}) - {self.report_date}"
+        return f"{self.name} ({self.symbol}) - {self.fiscal_date_ending} - {self.estimate}"
     
     class Meta:
-        unique_together = ('stock', 'current_date', 'report_date')
+        unique_together = ('stock', 'fiscal_date_ending')
 
 
 class GDPData(models.Model): 

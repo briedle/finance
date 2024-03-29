@@ -23,7 +23,9 @@ env.read_env(env_file)
 
 STATIC_ROOT = '/home/ubuntu/web-projects/finance/static_files'
 
-RAPIDAPI_KEY = env('RAPIDAPI_KEY')
+# RAPIDAPI_KEY = env('RAPIDAPI_KEY')
+# BE SURE TO FIX THIS!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+RAPIDAPI_KEY='b577ed1706msh668cf605f5832dfp138561jsn2e972d085c15'
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = env('AWS_STORAGE_BUCKET_NAME')

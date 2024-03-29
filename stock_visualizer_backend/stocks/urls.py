@@ -35,4 +35,9 @@ urlpatterns = [
           views.get_cash_flow,
           name='get_cash_flow'
      ),
+     path(
+          'earnings_calendar/<str:symbol>/',
+          views.get_earnings_calendar,
+          name='get_earnings_calendar'
+     )
 ]

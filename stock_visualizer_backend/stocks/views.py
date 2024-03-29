@@ -146,3 +146,14 @@ def get_cash_flow(request, symbol):
         .order_by('date')
     )
     return JsonResponse(list(stock_data), safe=False)
+
+
+def get_earnings_calendar(request, symbol):
+    stock_data = (
+        models.EarningsCalendarData
+        .objects
+        .filter(stock__symbol=symbol)
+        .values()
+        .order_by('fiscal_date_ending')
+    )
+    return JsonResponse(list(stock_data), safe=False)
