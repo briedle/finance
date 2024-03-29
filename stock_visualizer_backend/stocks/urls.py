@@ -11,6 +11,11 @@ urlpatterns = [
          views.get_adjusted_stock_price, 
          name='get_adjusted_stock_price'
     ),
+    path(
+         'base_data/<str:symbol>/',
+           views.get_base_data,
+          name='get_base_data'
+    ),
     path('earnings/<str:symbol>/',
          views.get_earnings, 
          name='get_earnings'

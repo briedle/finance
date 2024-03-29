@@ -157,3 +157,13 @@ def get_earnings_calendar(request, symbol):
         .order_by('fiscal_date_ending')
     )
     return JsonResponse(list(stock_data), safe=False)
+
+
+def get_base_data(request, symbol):
+    stock_data = (
+        models.BaseStockData
+        .objects
+        .filter(symbol=symbol)
+        .values()
+    )
+    return JsonResponse(list(stock_data), safe=False)
